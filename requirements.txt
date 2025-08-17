@@ -1,10 +1,7 @@
-fastapi
-uvicorn
-streamlit
-pyyaml
-pandas
-Pillow
-opencv-python
-mediapipe
-streamlit-webrtc
-av
+streamlit==1.37.0
+streamlit-webrtc==0.47.7
+opencv-python-headless==4.9.0.80
+av==10.0.0
+PyYAML==6.0.1
+Pillow==10.3.0
+numpy==1.26.4
