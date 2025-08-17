@@ -129,6 +129,38 @@ with tab_analyze:
                         st.write(f"{i}. {step}")
         except Exception as e:
             st.warning(f"Drills unavailable: {e}")
+        # --- Drill tag mapping: analyzer tags -> drills.yaml tags ---
+DRILL_TAG_ALIASES = {
+    # tempo
+    "fast_tempo": "tempo",
+    "slow_tempo": "tempo",
+
+    # sway / balance
+    "excess_sway": "sway",
+    "sway": "sway",
+    "loss_of_posture": "balance",
+
+    # rotation / hips / shoulders
+    "early_extension": "hips",
+    "hip_slide": "hips",
+    "flat_shoulder": "shoulders",
+    "limited_turn": "rotation",
+
+    # wrists / impact / contact
+    "casting": "impact",
+    "cupped_wrist": "contact",
+    "open_face": "contact",
+}
+
+def map_tags_to_drill_tags(analyzer_tags):
+    mapped = []
+    for t in analyzer_tags or []:
+        mapped.append(DRILL_TAG_ALIASES.get(t, t))  # default to itself if no alias
+    # de-dupe while keeping order
+    seen = set()
+    return [x for x in mapped if not (x in seen or seen.add(x))]
+
+
 
         # Coach Report (includes club)
         from core.report import render_pdf
