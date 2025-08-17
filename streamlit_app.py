@@ -3,57 +3,61 @@ import streamlit as st
 from core.rules import analyze_with_goals, DEFAULT_GOALS
 from core.report import render_pdf
 from capture_guide import get_recs, draw_overlay_grid
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from live_capture import GuideProcessor
 
 tab_capture, tab_analyze, tab_progress = st.tabs(["Capture", "Analyze", "Progress"])
 
 with tab_capture:
-    st.subheader("Get your swing video")
+    st.subheader("Capture your swing")
 
-    # Two options: Quick Upload vs Guided Capture
-    c1, c2 = st.columns(2)
+    # --- Club selection (applies to both capture paths) ---
+    clubs = ["Driver","3W","Hybrid","Long Iron","Mid Iron","Short Iron","Wedge"]
+    club = st.selectbox("Club", clubs, index=0)
+    st.session_state["club"] = club
 
-    # --------- Quick Upload ----------
-    with c1:
-        st.markdown("### Quick Upload")
-        up = st.file_uploader("Upload a swing video", type=["mp4","mov","avi"], key="quick_upload")
-        if up:
-            st.success("Video uploaded. Go to the Analyze tab to process it.")
-            st.session_state["uploaded_video"] = up  # save for Analyze tab
-            st.video(up)
+    # --- 1) Live Guided Capture (primary) ---
+    st.markdown("### Live Guided Capture (beta)")
+    st.caption("Live preview with framing guides. When the banner is green, record your swing.")
 
-    # --------- Guided Capture ----------
-    with c2:
-        st.markdown("### Guided Capture")
-        st.caption("Use your phone to align the frame first, then record with your camera app and upload that video here.")
-        angle = st.radio("Choose angle", ["FO (Face-On)", "DTL (Down-the-Line)"], horizontal=True)
-        angle_key = "FO" if angle.startswith("FO") else "DTL"
-        recs = get_recs(angle_key)
+    # requires: streamlit-webrtc, av; and live_capture.GuideProcessor in your repo
+    from streamlit_webrtc import webrtc_streamer, WebRtcMode
+    from live_capture import GuideProcessor
+    ctx = webrtc_streamer(
+        key="live-guide",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=GuideProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+    st.info("Tip: If live preview isn’t permitted by your mobile browser, use Quick Upload below or the Photo Framing fallback.")
 
-        st.markdown("**Recommended setup**")
-        st.write(f"- Camera height: **{recs['height_ft'][0]}–{recs['height_ft'][1]} ft** (≈ hand height)")
-        st.write(f"- Distance to player: **{recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft**")
+    st.divider()
+
+    # --- 2) Quick Upload (secondary) ---
+    st.markdown("### Quick Upload (existing video)")
+    up = st.file_uploader("Upload a swing video", type=["mp4","mov","avi"], key="quick_upload")
+    if up:
+        st.session_state["uploaded_video"] = up
+        st.video(up)
+        st.success("Uploaded. Go to the Analyze tab to process it.")
+
+    st.divider()
+
+    # --- 3) Photo Framing (fallback) ---
+    with st.expander("Photo Framing fallback (if live preview is blocked)"):
+        st.caption("Use a photo to check framing, then record with your camera app and upload above.")
+        angle = st.radio("Angle", ["FO (Face-On)","DTL (Down-the-Line)"], horizontal=True, key="fallback_angle")
+        from capture_guide import get_recs, draw_overlay_grid
+        recs = get_recs("FO" if angle.startswith("FO") else "DTL")
+        st.write(f"- Height: **{recs['height_ft'][0]}–{recs['height_ft'][1]} ft**")
+        st.write(f"- Distance: **{recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft**")
         for n in recs["notes"]:
             st.write("• " + n)
-
-        st.divider()
-        st.markdown("**Framing check (photo only)**")
-        st.caption("Take a quick photo to align. Then use your phone's camera to record the actual swing video.")
-
-        # Take a photo to check framing (works on mobile)
-        photo = st.camera_input("Open camera to take a framing photo")
+        photo = st.camera_input("Take a framing photo")
         if photo:
             from PIL import Image
             img = Image.open(photo)
-            over = draw_overlay_grid(img)
-            st.image(over, caption="Framing guide (grid + head box + feet margin)")
-            st.info("If your head is inside the top box and feet above the bottom margin, framing is good. Keep the horizon level.")
-
-        st.divider()
-        guided = st.file_uploader("Upload the recorded swing video", type=["mp4","mov","avi"], key="guided_upload")
-        if guided:
-            st.success("Video uploaded. Go to the Analyze tab to process it.")
-            st.session_state["uploaded_video"] = guided
-            st.video(guided)
+            st.image(draw_overlay_grid(img), caption="Framing guide")
             
 with tab_analyze:
     uploaded = st.session_state.get("uploaded_video")
