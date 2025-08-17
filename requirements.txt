@@ -4,3 +4,5 @@ streamlit
 pyyaml
 pandas
 Pillow
+streamlit-webrtc
+av
