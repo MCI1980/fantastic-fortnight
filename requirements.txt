@@ -4,5 +4,7 @@ streamlit
 pyyaml
 pandas
 Pillow
+opencv-python
+mediapipe
 streamlit-webrtc
 av
