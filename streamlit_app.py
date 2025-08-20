@@ -55,7 +55,7 @@ with tab_capture:
     club = st.selectbox("Club", clubs, index=0)
     st.session_state["club"] = club
 
-  st.markdown("### Live Guided Capture (beta)")
+st.markdown("### Live Guided Capture (beta)")
 
 proc_choice = st.radio("Live preview mode", ["Echo test (debug)", "Guide with overlays"], horizontal=True)
 proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
