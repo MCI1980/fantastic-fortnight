@@ -55,17 +55,34 @@ with tab_capture:
     club = st.selectbox("Club", clubs, index=0)
     st.session_state["club"] = club
 
-    # 1) Live Guided Capture (primary)
-    st.markdown("### Live Guided Capture (beta)")
-    st.caption("Live preview with framing guides. When the banner is green, record your swing.")
-    webrtc_streamer(
-        key="live-guide",
-        mode=WebRtcMode.SENDRECV,
-        video_processor_factory=GuideProcessor,
-        media_stream_constraints={"video": True, "audio": False},
-    )
-    st.info("Tip: If live preview isn’t permitted by your mobile browser, use Quick Upload below or the Photo Framing fallback.")
-    st.divider()
+  st.markdown("### Live Guided Capture (beta)")
+
+proc_choice = st.radio("Live preview mode", ["Echo test (debug)", "Guide with overlays"], horizontal=True)
+proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
+
+rtc_config = RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
+
+ctx = webrtc_streamer(
+    key="live-guide",
+    mode=WebRtcMode.SENDRECV,
+    rtc_configuration=rtc_config,
+    media_stream_constraints={
+        "video": {
+            "facingMode": {"ideal": "environment"},  # try "user" if you still see black
+            # Optional stability caps:
+            # "width": {"ideal": 1280}, "height": {"ideal": 720}, "frameRate": {"ideal": 30}
+        },
+        "audio": False,
+    },
+    video_processor_factory=proc,
+    async_processing=True,
+)
+
+if ctx and ctx.state.playing:
+    st.success("Camera streaming…")
+else:
+    st.info("Waiting for camera permission… tap the camera icon/address bar and Allow. If still blank, switch facingMode to 'user' or try another mobile browser.")
+st.divider()
 
     # 2) Quick Upload (secondary)
     st.markdown("### Quick Upload (existing video)")
