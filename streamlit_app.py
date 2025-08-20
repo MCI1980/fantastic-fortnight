@@ -50,41 +50,45 @@ tab_capture, tab_analyze, tab_progress = st.tabs(["Capture", "Analyze", "Progres
 with tab_capture:
     st.subheader("Capture your swing")
 
-    # Club selection applies to analysis goals
+    # --- Club selection ---
     clubs = ["Driver","3W","Hybrid","Long Iron","Mid Iron","Short Iron","Wedge"]
     club = st.selectbox("Club", clubs, index=0)
     st.session_state["club"] = club
 
-st.markdown("### Live Guided Capture (beta)")
+    # --- 1) Live Guided Capture ---
+    st.markdown("### Live Guided Capture (beta)")
 
-proc_choice = st.radio("Live preview mode", ["Echo test (debug)", "Guide with overlays"], horizontal=True)
-proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
+    from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+    from live_capture import GuideProcessor, EchoTestProcessor
 
-rtc_config = RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
+    proc_choice = st.radio("Live preview mode", ["Echo test (debug)", "Guide with overlays"], horizontal=True)
+    proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
 
-ctx = webrtc_streamer(
-    key="live-guide",
-    mode=WebRtcMode.SENDRECV,
-    rtc_configuration=rtc_config,
-    media_stream_constraints={
-        "video": {
-            "facingMode": {"ideal": "environment"},  # try "user" if you still see black
-            # Optional stability caps:
-            # "width": {"ideal": 1280}, "height": {"ideal": 720}, "frameRate": {"ideal": 30}
+    rtc_config = RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
+
+    ctx = webrtc_streamer(
+        key="live-guide",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=rtc_config,
+        media_stream_constraints={
+            "video": {
+                "facingMode": {"ideal": "environment"},  # back camera
+            },
+            "audio": False,
         },
-        "audio": False,
-    },
-    video_processor_factory=proc,
-    async_processing=True,
-)
+        video_processor_factory=proc,
+        async_processing=True,
+    )
 
-if ctx and ctx.state.playing:
-    st.success("Camera streaming…")
-else:
-    st.info("Waiting for camera permission… tap the camera icon/address bar and Allow. If still blank, switch facingMode to 'user' or try another mobile browser.")
-st.divider()
+    if ctx and ctx.state.playing:
+        st.success("Camera streaming…")
+    else:
+        st.info("Waiting for camera permission… tap the camera icon/address bar and Allow. "
+                "If still blank, switch facingMode to 'user' or try another mobile browser.")
 
-    # 2) Quick Upload (secondary)
+    st.divider()
+
+    # --- 2) Quick Upload ---
     st.markdown("### Quick Upload (existing video)")
     up = st.file_uploader("Upload a swing video", type=["mp4","mov","avi"], key="quick_upload")
     if up:
@@ -94,10 +98,11 @@ st.divider()
 
     st.divider()
 
-    # 3) Photo Framing (fallback)
+    # --- 3) Photo Framing (fallback) ---
     with st.expander("Photo Framing fallback (if live preview is blocked)"):
         st.caption("Use a photo to check framing, then record with your camera app and upload above.")
         angle = st.radio("Angle", ["FO (Face-On)","DTL (Down-the-Line)"], horizontal=True, key="fallback_angle")
+        from capture_guide import get_recs, draw_overlay_grid
         recs = get_recs("FO" if angle.startswith("FO") else "DTL")
         st.write(f"- Height: **{recs['height_ft'][0]}–{recs['height_ft'][1]} ft**")
         st.write(f"- Distance: **{recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft**")
@@ -108,7 +113,6 @@ st.divider()
             from PIL import Image
             img = Image.open(photo)
             st.image(draw_overlay_grid(img), caption="Framing guide")
-
 # =========================
 # Analyze
 # =========================
