@@ -30,6 +30,9 @@ except ImportError:
 # Session storage import
 from data import Session, get_session_store
 
+# Integrations import
+from integrations import FEATURE_FLAGS, get_available_integrations, is_feature_enabled
+
 # WebRTC imports
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
@@ -40,6 +43,32 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="collapsed",
 )
+
+# ---- Sidebar: Pro Features (Coming Soon) ----
+with st.sidebar:
+    st.header("Pro Features")
+    st.caption("Coming Soon")
+
+    integrations = get_available_integrations()
+
+    for int_id, info in integrations.items():
+        status_badge = {
+            "coming_soon": "🔜",
+            "planned": "📋",
+            "available": "✅",
+        }.get(info.get("status", "planned"), "📋")
+
+        with st.expander(f"{info['icon']} {info['name']} {status_badge}"):
+            st.write(info["description"])
+            st.caption(f"Features: {', '.join(info['features'])}")
+
+            if info["status"] == "coming_soon":
+                st.info("Integration coming soon. Stay tuned!")
+            elif info["status"] == "planned":
+                st.caption("On our roadmap")
+
+    st.divider()
+    st.caption("Want an integration? [Request here](https://github.com)")
 
 # ---- Tabs ----
 tab_capture, tab_analyze, tab_progress = st.tabs(["Capture", "Analyze", "Progress"])
