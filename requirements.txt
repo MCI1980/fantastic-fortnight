@@ -5,3 +5,7 @@ av==10.0.0
 PyYAML==6.0.1
 Pillow==10.3.0
 numpy==1.26.4
+mediapipe==0.10.14
+
+# Testing (optional)
+pytest==8.0.0

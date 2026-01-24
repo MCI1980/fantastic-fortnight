@@ -1,0 +1,168 @@
+# Golf Coaching Drills
+# Each drill has: name, tags (for matching), difficulty, equipment, steps
+# Safety note: These are general practice suggestions, not medical advice.
+
+- name: "Metronome Tempo Drill"
+  tags: ["tempo"]
+  difficulty: "beginner"
+  equipment: ["metronome or phone app"]
+  steps:
+    - "Set metronome to 60 BPM."
+    - "Count 1-2-3 on backswing, 4 on downswing."
+    - "Start with half swings, then progress to full."
+    - "Aim for 3:1 tempo ratio."
+  why: "Builds a consistent, repeatable swing rhythm."
+
+- name: "Pause at the Top"
+  tags: ["tempo", "balance"]
+  difficulty: "beginner"
+  equipment: []
+  steps:
+    - "Make a normal backswing."
+    - "Pause for 1 full second at the top."
+    - "Then complete the downswing smoothly."
+    - "Repeat 10 times, focusing on balance."
+  why: "Helps eliminate rushing and improves transition timing."
+
+- name: "Head Against Wall Drill"
+  tags: ["sway"]
+  difficulty: "beginner"
+  equipment: ["wall or door frame"]
+  steps:
+    - "Stand with your head lightly touching a wall (use a towel for comfort)."
+    - "Make slow backswings keeping head contact."
+    - "Feel your body rotate around a stable head."
+    - "Progress to half swings, maintaining contact."
+  why: "Trains your body to rotate without lateral head movement."
+
+- name: "Alignment Stick Head Check"
+  tags: ["sway", "balance"]
+  difficulty: "intermediate"
+  equipment: ["alignment stick", "hat or visor"]
+  steps:
+    - "Place alignment stick in ground at address, touching your cap brim."
+    - "Make slow swings without moving away from the stick."
+    - "If your head moves off the stick, you're swaying."
+    - "Practice until you can swing without losing contact."
+  why: "Provides instant feedback on head movement during the swing."
+
+- name: "Chair Hip Rotation Drill"
+  tags: ["hips", "rotation"]
+  difficulty: "beginner"
+  equipment: ["chair"]
+  steps:
+    - "Sit on edge of chair, feet flat, arms crossed on chest."
+    - "Rotate shoulders like a backswing while keeping hips stable."
+    - "Feel the stretch in your core/obliques."
+    - "Hold 2 seconds, return. Repeat 10 times each side."
+  why: "Builds hip-shoulder separation awareness without full swing."
+
+- name: "Step-Through Drill"
+  tags: ["hips", "balance", "rotation"]
+  difficulty: "intermediate"
+  equipment: []
+  steps:
+    - "Address the ball normally."
+    - "On the downswing, let your back foot step toward the target."
+    - "Finish with feet together, facing target."
+    - "This forces proper weight shift and hip rotation."
+  why: "Teaches dynamic weight transfer and prevents hanging back."
+
+- name: "Shoulder Turn with Club Across Chest"
+  tags: ["shoulders", "rotation"]
+  difficulty: "beginner"
+  equipment: []
+  steps:
+    - "Hold a club across your chest, arms crossed."
+    - "Take your golf posture."
+    - "Rotate as if making a backswing - club should point at ball."
+    - "Feel your left shoulder (for righties) move under your chin."
+  why: "Isolates and measures shoulder rotation without arm involvement."
+
+- name: "Trail Arm Only Drill"
+  tags: ["shoulders", "contact"]
+  difficulty: "intermediate"
+  equipment: ["short iron or wedge"]
+  steps:
+    - "Grip club with trail hand only (right for righties)."
+    - "Make small pitch swings to a target 30-50 yards."
+    - "Focus on keeping trail elbow close to body."
+    - "This promotes proper arm/shoulder connection."
+  why: "Builds feel for connected arm swing and proper rotation sequence."
+
+- name: "Impact Bag Drill"
+  tags: ["impact", "contact"]
+  difficulty: "beginner"
+  equipment: ["impact bag or old duffel with towels"]
+  steps:
+    - "Address the bag as if it were a ball."
+    - "Make slow swings, stopping at impact position."
+    - "Check: hands ahead of clubhead, weight on front foot."
+    - "Gradually increase speed, always stopping at impact."
+  why: "Trains proper impact position with hands leading the clubhead."
+
+- name: "Towel Under Arms Drill"
+  tags: ["contact", "rotation"]
+  difficulty: "beginner"
+  equipment: ["small towel"]
+  steps:
+    - "Tuck a towel under both armpits."
+    - "Make half swings keeping the towel in place."
+    - "If towel drops, arms are disconnecting from body."
+    - "Progress to 3/4 swings while maintaining connection."
+  why: "Promotes body-arm connection for more consistent contact."
+
+- name: "Feet Together Balance Drill"
+  tags: ["balance"]
+  difficulty: "beginner"
+  equipment: []
+  steps:
+    - "Stand with feet together (touching)."
+    - "Make half swings with a short iron."
+    - "Focus on maintaining balance throughout."
+    - "If you fall off balance, swing is too aggressive."
+  why: "Reveals and corrects balance issues in the swing."
+
+- name: "One-Leg Finish Drill"
+  tags: ["balance", "rotation"]
+  difficulty: "intermediate"
+  equipment: []
+  steps:
+    - "Make a normal swing."
+    - "Hold your finish on your front foot only."
+    - "Back foot should be on toe, no weight on it."
+    - "Hold for 3 seconds without wobbling."
+  why: "Ensures proper weight transfer and balanced finish position."
+
+- name: "Slow Motion Swings"
+  tags: ["tempo", "balance", "rotation"]
+  difficulty: "beginner"
+  equipment: []
+  steps:
+    - "Make a full swing at 25% speed."
+    - "Take 8-10 seconds from address to finish."
+    - "Feel every position: takeaway, top, impact, finish."
+    - "Repeat 5 times, then hit a ball at normal speed."
+  why: "Builds awareness of swing positions and muscle memory."
+
+- name: "Hip Bump Drill"
+  tags: ["hips", "impact"]
+  difficulty: "intermediate"
+  equipment: ["alignment stick or chair"]
+  steps:
+    - "Place a stick or chair just outside your lead hip at address."
+    - "On downswing, bump your hip into the obstacle."
+    - "This initiates proper lower body sequence."
+    - "Practice without a ball first, then add ball."
+  why: "Trains the hips to lead the downswing for more power."
+
+- name: "Split Grip Drill"
+  tags: ["contact", "impact"]
+  difficulty: "intermediate"
+  equipment: []
+  steps:
+    - "Grip club with hands 3-4 inches apart."
+    - "Make slow, controlled swings."
+    - "Focus on keeping lead wrist flat through impact."
+    - "Feel how hands work together through the hitting zone."
+  why: "Promotes proper wrist action and hand path through impact."
