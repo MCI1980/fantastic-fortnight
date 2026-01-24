@@ -1,6 +1,11 @@
 # capture package - Video capture and framing guidance
 from capture.guide import get_recs, draw_overlay_grid, FO_DEFAULTS, DTL_DEFAULTS
-from capture.live import GuideProcessor, EchoTestProcessor, FramingStatus
+from capture.live import (
+    GuideProcessor,
+    EchoTestProcessor,
+    FramingStatus,
+    create_guide_processor,
+)
 
 __all__ = [
     "get_recs",
@@ -10,4 +15,5 @@ __all__ = [
     "GuideProcessor",
     "EchoTestProcessor",
     "FramingStatus",
+    "create_guide_processor",
 ]

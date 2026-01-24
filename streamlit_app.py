@@ -16,7 +16,7 @@ from coaching import (
     load_drills,
     get_goals_for_club,
 )
-from capture import get_recs, draw_overlay_grid, GuideProcessor, EchoTestProcessor
+from capture import get_recs, draw_overlay_grid, GuideProcessor, EchoTestProcessor, create_guide_processor
 from core.report import render_pdf
 
 # Video analysis import (with graceful fallback)
@@ -47,80 +47,132 @@ tab_capture, tab_analyze, tab_progress = st.tabs(["Capture", "Analyze", "Progres
 with tab_capture:
     st.subheader("Capture your swing")
 
-    # --- Club selection ---
-    clubs = ["Driver", "3W", "Hybrid", "Long Iron", "Mid Iron", "Short Iron", "Wedge"]
-    club = st.selectbox("Club", clubs, index=0)
-    st.session_state["club"] = club
+    # --- Setup section ---
+    setup_col1, setup_col2 = st.columns(2)
 
-    # --- Camera angle selection ---
-    angle_choice = st.radio(
-        "Camera angle",
-        ["FO (Face-On)", "DTL (Down-the-Line)"],
-        horizontal=True,
-        help="Face-On: camera perpendicular to target line. Down-the-Line: camera behind on hand line."
-    )
-    st.session_state["angle"] = "FO" if angle_choice.startswith("FO") else "DTL"
+    with setup_col1:
+        # Club selection
+        clubs = ["Driver", "3W", "Hybrid", "Long Iron", "Mid Iron", "Short Iron", "Wedge"]
+        club = st.selectbox("Club", clubs, index=0)
+        st.session_state["club"] = club
+
+    with setup_col2:
+        # Camera angle selection
+        angle_choice = st.radio(
+            "Camera angle",
+            ["FO (Face-On)", "DTL (Down-the-Line)"],
+            horizontal=True,
+        )
+        angle = "FO" if angle_choice.startswith("FO") else "DTL"
+        st.session_state["angle"] = angle
+
+    # --- Angle-specific setup guidance ---
+    recs = get_recs(angle)
+    with st.expander(f"Setup Guide for {angle_choice}", expanded=True):
+        guide_col1, guide_col2 = st.columns(2)
+
+        with guide_col1:
+            st.markdown("**Camera Position:**")
+            st.write(f"- Height: {recs['height_ft'][0]}–{recs['height_ft'][1]} ft")
+            st.write(f"- Distance: {recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft")
+
+        with guide_col2:
+            st.markdown("**Checklist:**")
+            st.write("✓ Full body in frame (head to feet)")
+            st.write("✓ Golfer centered in frame")
+            st.write("✓ Good lighting (no backlight)")
+            st.write("✓ Landscape orientation")
+            st.write("✓ 60 FPS if possible")
+
+        st.caption("**Tips:** " + " | ".join(recs["notes"][:2]))
+
+    st.divider()
 
     # --- 1) Live Guided Capture ---
-    st.markdown("### Live Guided Capture (beta)")
+    st.markdown("### Live Guided Capture")
+    st.caption("Real-time framing feedback. Green = ready, Orange = adjust position.")
 
-    proc_choice = st.radio(
-        "Live preview mode",
-        ["Guide with overlays", "Echo test (debug)"],
-        horizontal=True
-    )
-    proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
+    # Create angle-aware processor
+    processor_factory = create_guide_processor(angle)
 
     rtc_config = RTCConfiguration({
         "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
     })
 
+    # Camera preference
+    camera_mode = st.radio(
+        "Camera",
+        ["Back camera", "Front camera"],
+        horizontal=True,
+        help="Back camera recommended. Use front if back doesn't work."
+    )
+    facing_mode = "environment" if camera_mode == "Back camera" else "user"
+
     ctx = webrtc_streamer(
-        key="live-guide",
+        key=f"live-guide-{angle}-{facing_mode}",  # Key changes with angle/camera
         mode=WebRtcMode.SENDRECV,
         rtc_configuration=rtc_config,
         media_stream_constraints={
-            "video": {"facingMode": {"ideal": "environment"}},  # back camera
+            "video": {"facingMode": {"ideal": facing_mode}},
             "audio": False,
         },
-        video_processor_factory=proc,
+        video_processor_factory=processor_factory,
         async_processing=True,
     )
 
+    # Status feedback
     if ctx and ctx.state.playing:
-        st.success("Camera streaming...")
+        st.success("Camera streaming. Position yourself until the banner turns GREEN.")
     else:
-        st.info(
-            "Waiting for camera permission... tap the camera icon/address bar and Allow. "
-            "If still blank, switch facingMode to 'user' or try another mobile browser."
-        )
+        st.warning("Camera not streaming yet. See troubleshooting below if this persists.")
+
+        # Troubleshooting expander
+        with st.expander("Camera Troubleshooting"):
+            st.markdown("""
+            **Common Issues:**
+
+            **iOS Safari:**
+            1. Tap the "Aa" in address bar → Website Settings → Allow Camera
+            2. Refresh the page after granting permission
+            3. Only works over HTTPS (automatic on Streamlit Cloud)
+
+            **Android Chrome:**
+            1. Tap the lock icon in address bar → Permissions → Camera → Allow
+            2. If "Back camera" doesn't work, try "Front camera"
+
+            **Desktop:**
+            1. Click the camera icon in the address bar
+            2. Select "Allow" for camera access
+            3. May need to refresh after granting permission
+
+            **Still not working?**
+            - Try a different browser (Chrome works best)
+            - Use the Photo Fallback or Quick Upload below
+            """)
 
     st.divider()
 
     # --- 2) Quick Upload ---
-    st.markdown("### Quick Upload (existing video)")
+    st.markdown("### Quick Upload")
+    st.caption("Already have a video? Upload it here.")
+
     up = st.file_uploader("Upload a swing video", type=["mp4", "mov", "avi"], key="quick_upload")
     if up:
         st.session_state["uploaded_video"] = up
         st.video(up)
-        st.success("Uploaded. Go to the Analyze tab to process it.")
+        st.success("Uploaded. Go to the **Analyze** tab to process it.")
 
     st.divider()
 
-    # --- 3) Photo Framing (fallback) ---
-    with st.expander("Photo Framing fallback (if live preview is blocked)"):
-        st.caption("Use a photo to check framing, then record with your camera app and upload above.")
-        recs = get_recs(st.session_state.get("angle", "FO"))
-        st.write(f"- Height: **{recs['height_ft'][0]}–{recs['height_ft'][1]} ft**")
-        st.write(f"- Distance: **{recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft**")
-        for n in recs["notes"]:
-            st.write("• " + n)
+    # --- 3) Photo Framing Fallback ---
+    with st.expander("Photo Framing Fallback"):
+        st.caption("If live preview doesn't work, check your framing with a photo, then record with your native camera app.")
 
-        photo = st.camera_input("Take a framing photo")
+        photo = st.camera_input("Take a test photo")
         if photo:
             from PIL import Image
             img = Image.open(photo)
-            st.image(draw_overlay_grid(img), caption="Framing guide")
+            st.image(draw_overlay_grid(img), caption="Framing check - adjust until centered in guides")
 
 # =========================
 # Analyze Tab
