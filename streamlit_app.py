@@ -27,6 +27,9 @@ except ImportError:
     VIDEO_ANALYSIS_AVAILABLE = False
     AnalysisResult = None
 
+# Session storage import
+from data import Session, get_session_store
+
 # WebRTC imports
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
@@ -426,27 +429,185 @@ with tab_analyze:
         else:
             st.warning("Drills database not found.")
 
-        # Coach Report download
+        # Save and Download section
         st.divider()
-        st.download_button(
-            "Download Coach Report (PDF)",
-            data=render_pdf({
-                "club": club,
-                "video_name": getattr(video, "name", "clip"),
-                "metrics": metrics,
-                "pointers": pointers,
-            }),
-            file_name="coach_report.pdf",
-            mime="application/pdf",
-        )
+
+        save_col1, save_col2 = st.columns(2)
+
+        with save_col1:
+            # Save Session button
+            if st.button("Save to Progress", type="secondary", use_container_width=True):
+                store = get_session_store()
+                session = Session.create(
+                    club=club,
+                    angle=angle,
+                    metrics=metrics,
+                    confidence=confidence,
+                    pointers=pointers,
+                    video_name=getattr(video, "name", "clip") if video else "",
+                )
+                if store.save_session(session):
+                    st.success("Session saved! View in Progress tab.")
+                    st.session_state["last_saved_session"] = session.id
+                else:
+                    st.error("Could not save session. Storage may be unavailable.")
+
+        with save_col2:
+            # Coach Report download
+            st.download_button(
+                "Download Report (PDF)",
+                data=render_pdf({
+                    "club": club,
+                    "video_name": getattr(video, "name", "clip"),
+                    "metrics": metrics,
+                    "pointers": pointers,
+                }),
+                file_name="coach_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 # =========================
-# Progress Tab (placeholder - Task 5)
+# Progress Tab
 # =========================
 with tab_progress:
     st.subheader("Progress Tracking")
-    st.info(
-        "Progress tracking will be implemented soon. "
-        "For now, focus on Capture → Analyze to improve your swing."
-    )
-    st.caption("Coming: Session history, trend charts, and improvement tracking.")
+
+    # Get session store
+    store = get_session_store()
+
+    # Ephemeral storage warning
+    if store.is_ephemeral:
+        st.warning(
+            "Note: Session data is stored temporarily and may be lost when the app restarts. "
+            "Use 'Export Sessions' below to save your data."
+        )
+
+    # Load sessions
+    sessions = store.load_sessions(limit=100)
+
+    if not sessions:
+        st.info("No sessions recorded yet. Analyze a swing and click 'Save to Progress' to start tracking.")
+    else:
+        # Filters
+        filter_col1, filter_col2 = st.columns(2)
+
+        with filter_col1:
+            clubs = ["All"] + list(set(s.club for s in sessions))
+            filter_club = st.selectbox("Filter by Club", clubs, key="filter_club")
+
+        with filter_col2:
+            angles = ["All"] + list(set(s.angle for s in sessions))
+            filter_angle = st.selectbox("Filter by Angle", angles, key="filter_angle")
+
+        # Apply filters
+        filtered = sessions
+        if filter_club != "All":
+            filtered = [s for s in filtered if s.club == filter_club]
+        if filter_angle != "All":
+            filtered = [s for s in filtered if s.angle == filter_angle]
+
+        st.caption(f"Showing {len(filtered)} of {len(sessions)} sessions")
+
+        # Trend charts
+        if len(filtered) >= 2:
+            st.subheader("Trends")
+
+            # Prepare data for charts
+            import datetime
+
+            chart_data = []
+            for s in reversed(filtered):  # Oldest first for charts
+                try:
+                    dt = datetime.datetime.fromisoformat(s.timestamp)
+                    date_str = dt.strftime("%m/%d")
+                except Exception:
+                    date_str = s.timestamp[:10]
+
+                chart_data.append({
+                    "date": date_str,
+                    "tempo": s.metrics.get("tempo_ratio"),
+                    "head_sway": s.metrics.get("head_sway_cm"),
+                    "hip_rotation": s.metrics.get("hip_rotation_deg_top"),
+                    "shoulder_rotation": s.metrics.get("shoulder_rotation_deg_top"),
+                })
+
+            # Tempo chart
+            tempo_data = [(d["date"], d["tempo"]) for d in chart_data if d["tempo"] is not None]
+            if len(tempo_data) >= 2:
+                st.markdown("**Tempo Ratio Over Time**")
+                st.caption("Target: 2.5-3.5 (varies by club)")
+                chart_df = {"Date": [d[0] for d in tempo_data], "Tempo": [d[1] for d in tempo_data]}
+                st.line_chart(chart_df, x="Date", y="Tempo")
+
+            # Head sway chart
+            sway_data = [(d["date"], d["head_sway"]) for d in chart_data if d["head_sway"] is not None]
+            if len(sway_data) >= 2:
+                st.markdown("**Head Sway Over Time (cm)**")
+                st.caption("Lower is better. Target: <4cm for Driver")
+                chart_df = {"Date": [d[0] for d in sway_data], "Head Sway (cm)": [d[1] for d in sway_data]}
+                st.line_chart(chart_df, x="Date", y="Head Sway (cm)")
+
+        # Session list
+        st.subheader("Recent Sessions")
+
+        for s in filtered[:20]:  # Show last 20
+            try:
+                dt = datetime.datetime.fromisoformat(s.timestamp)
+                date_str = dt.strftime("%b %d, %Y %H:%M")
+            except Exception:
+                date_str = s.timestamp
+
+            # Confidence badge
+            conf_badge = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(s.confidence, "⚪")
+
+            with st.expander(f"{conf_badge} {date_str} - {s.club} ({s.angle})"):
+                # Metrics
+                m = s.metrics
+                met_col1, met_col2, met_col3, met_col4 = st.columns(4)
+                met_col1.metric("Tempo", m.get("tempo_ratio", "N/A"))
+                met_col2.metric("Head Sway", f"{m.get('head_sway_cm', 'N/A')} cm" if m.get('head_sway_cm') else "N/A")
+                met_col3.metric("Hip Rot", f"{m.get('hip_rotation_deg_top', 'N/A')}°" if m.get('hip_rotation_deg_top') else "N/A")
+                met_col4.metric("Shoulder Rot", f"{m.get('shoulder_rotation_deg_top', 'N/A')}°" if m.get('shoulder_rotation_deg_top') else "N/A")
+
+                # Pointers summary
+                if s.pointers_summary:
+                    st.markdown("**Key feedback:**")
+                    for p in s.pointers_summary[:3]:
+                        st.write(f"• {p}")
+
+        # Export section
+        st.divider()
+        st.subheader("Data Management")
+
+        export_col1, export_col2 = st.columns(2)
+
+        with export_col1:
+            # Export sessions
+            if sessions:
+                export_data = store.export_sessions_json()
+                st.download_button(
+                    "Export Sessions (JSON)",
+                    data=export_data,
+                    file_name="golf_sessions_export.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+
+        with export_col2:
+            # Clear sessions (with confirmation)
+            if st.button("Clear All Sessions", type="secondary", use_container_width=True):
+                st.session_state["confirm_clear"] = True
+
+            if st.session_state.get("confirm_clear"):
+                st.warning("Are you sure? This cannot be undone.")
+                confirm_col1, confirm_col2 = st.columns(2)
+                with confirm_col1:
+                    if st.button("Yes, clear all", type="primary"):
+                        store.clear_sessions()
+                        st.session_state["confirm_clear"] = False
+                        st.rerun()
+                with confirm_col2:
+                    if st.button("Cancel"):
+                        st.session_state["confirm_clear"] = False
+                        st.rerun()
