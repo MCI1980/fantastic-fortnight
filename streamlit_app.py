@@ -17,6 +17,14 @@ from coaching.goals import get_goals_for_club
 from capture import get_recs, draw_overlay_grid, GuideProcessor, EchoTestProcessor
 from core.report import render_pdf
 
+# Video analysis import (with graceful fallback)
+try:
+    from video_analysis import analyze_swing_video, AnalysisResult
+    VIDEO_ANALYSIS_AVAILABLE = True
+except ImportError:
+    VIDEO_ANALYSIS_AVAILABLE = False
+    AnalysisResult = None
+
 # WebRTC imports
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
@@ -42,12 +50,21 @@ with tab_capture:
     club = st.selectbox("Club", clubs, index=0)
     st.session_state["club"] = club
 
+    # --- Camera angle selection ---
+    angle_choice = st.radio(
+        "Camera angle",
+        ["FO (Face-On)", "DTL (Down-the-Line)"],
+        horizontal=True,
+        help="Face-On: camera perpendicular to target line. Down-the-Line: camera behind on hand line."
+    )
+    st.session_state["angle"] = "FO" if angle_choice.startswith("FO") else "DTL"
+
     # --- 1) Live Guided Capture ---
     st.markdown("### Live Guided Capture (beta)")
 
     proc_choice = st.radio(
         "Live preview mode",
-        ["Echo test (debug)", "Guide with overlays"],
+        ["Guide with overlays", "Echo test (debug)"],
         horizontal=True
     )
     proc = EchoTestProcessor if proc_choice.startswith("Echo") else GuideProcessor
@@ -91,13 +108,7 @@ with tab_capture:
     # --- 3) Photo Framing (fallback) ---
     with st.expander("Photo Framing fallback (if live preview is blocked)"):
         st.caption("Use a photo to check framing, then record with your camera app and upload above.")
-        angle = st.radio(
-            "Angle",
-            ["FO (Face-On)", "DTL (Down-the-Line)"],
-            horizontal=True,
-            key="fallback_angle"
-        )
-        recs = get_recs("FO" if angle.startswith("FO") else "DTL")
+        recs = get_recs(st.session_state.get("angle", "FO"))
         st.write(f"- Height: **{recs['height_ft'][0]}–{recs['height_ft'][1]} ft**")
         st.write(f"- Distance: **{recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft**")
         for n in recs["notes"]:
@@ -114,8 +125,14 @@ with tab_capture:
 # =========================
 with tab_analyze:
     club = st.session_state.get("club", "Driver")
+    angle = st.session_state.get("angle", "FO")
+
     st.subheader("Analyze")
-    st.caption(f"Analyzing as: **{club}** (goals adjust by club)")
+
+    # Summary card
+    col1, col2 = st.columns(2)
+    col1.markdown(f"**Club:** {club}")
+    col2.markdown(f"**Angle:** {angle}")
 
     # Video source (from Capture or upload here)
     video = st.session_state.get("uploaded_video")
@@ -130,13 +147,59 @@ with tab_analyze:
         st.warning("No video detected. Use the Capture tab to record or upload a clip.")
 
     st.divider()
+
+    # Handedness selection
+    hand_col1, hand_col2 = st.columns([3, 1])
+    with hand_col2:
+        handedness = st.selectbox("Handedness", ["Right", "Left"], index=0)
+        st.session_state["handedness"] = handedness.lower()
+
     analyze_now = st.button("Analyze Video", type="primary", use_container_width=True)
 
-    # Placeholder analysis until video_analysis pipeline is wired (Task 2)
+    # Analysis state
     metrics = None
+    keyframes = {}
+    confidence = "low"
+    analysis_error = None
+
     if analyze_now and video:
-        with st.spinner("Analyzing swing..."):
-            # TODO: Replace with real analysis from video_analysis module
+        if VIDEO_ANALYSIS_AVAILABLE:
+            with st.spinner("Analyzing swing with AI pose detection..."):
+                try:
+                    # Reset video file position
+                    video.seek(0)
+
+                    # Run real video analysis
+                    result = analyze_swing_video(
+                        video_file=video,
+                        angle=angle,
+                        handedness=st.session_state.get("handedness", "right"),
+                        target_fps=15.0
+                    )
+
+                    if result.success:
+                        metrics = result.to_metrics_dict()
+                        keyframes = result.keyframes
+                        confidence = result.overall_confidence
+
+                        # Store in session state
+                        st.session_state["last_metrics"] = metrics
+                        st.session_state["last_keyframes"] = keyframes
+                        st.session_state["last_confidence"] = confidence
+                        st.session_state["analysis_info"] = {
+                            "frames_processed": result.frames_processed,
+                            "frames_with_pose": result.frames_with_pose,
+                            "duration_sec": result.duration_sec,
+                            "fps": result.fps,
+                        }
+                    else:
+                        analysis_error = result.error_message
+
+                except Exception as e:
+                    analysis_error = f"Analysis error: {str(e)}"
+        else:
+            # Fallback to placeholder metrics if video analysis not available
+            st.warning("Video analysis module not available. Showing placeholder data.")
             metrics = {
                 "tempo_ratio": 3.1,
                 "head_sway_cm": 5.2,
@@ -145,35 +208,115 @@ with tab_analyze:
                 "lead_wrist_set_deg_top": 60,
                 "pelvis_slide_cm": 4.5,
             }
+            confidence = "low"
             st.session_state["last_metrics"] = metrics
+            st.session_state["last_confidence"] = confidence
+
+    # Show error if analysis failed
+    if analysis_error:
+        st.error(analysis_error)
+        with st.expander("Tips for better analysis"):
+            st.markdown("""
+            - **Full body visible**: Ensure your entire body is in frame from head to feet
+            - **Good lighting**: Avoid strong backlight; even indoor lighting works
+            - **Steady camera**: Use a tripod or stable surface
+            - **Complete swing**: Include address through finish in the video
+            - **Appropriate clothing**: Avoid very baggy clothes that obscure body shape
+            - **Video length**: Keep videos under 20 seconds
+            """)
 
     # Show metrics if available (from current or previous analysis)
     if metrics is None and "last_metrics" in st.session_state:
-        metrics = st.session_state["last_metrics"]
+        metrics = st.session_state.get("last_metrics")
+        keyframes = st.session_state.get("last_keyframes", {})
+        confidence = st.session_state.get("last_confidence", "low")
 
     if metrics:
         # Get club-specific goals
         goals = get_goals_for_club(club)
 
+        # Confidence indicator
+        confidence_colors = {"high": "🟢", "medium": "🟡", "low": "🔴"}
+        st.caption(f"{confidence_colors.get(confidence, '⚪')} Detection confidence: **{confidence}**")
+
+        if confidence == "low":
+            st.warning("Low confidence detection. Results may be less accurate. See tips above.")
+
+        # Keyframe images
+        if keyframes:
+            st.subheader("Key Positions")
+            kf_cols = st.columns(len(keyframes))
+            for i, (phase, img) in enumerate(keyframes.items()):
+                with kf_cols[i]:
+                    st.image(img, caption=phase.capitalize(), use_container_width=True)
+
         # Metrics display
         st.subheader("Metrics")
+
+        # Show estimated label for metrics
+        st.caption("*Metrics are estimated from video pose detection and may vary from professional launch monitors.*")
+
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Tempo (B:D)", f"{metrics.get('tempo_ratio', 'N/A')}")
-        c2.metric("Head sway", f"{metrics.get('head_sway_cm', 'N/A')} cm")
-        c3.metric("Hip rot @Top", f"{metrics.get('hip_rotation_deg_top', 'N/A')}°")
-        c4.metric("Shoulder rot @Top", f"{metrics.get('shoulder_rotation_deg_top', 'N/A')}°")
+
+        tempo = metrics.get('tempo_ratio')
+        c1.metric(
+            "Tempo (B:D)",
+            f"{tempo}" if tempo else "N/A",
+            help="Backswing:Downswing frame ratio. Tour avg: 3.0"
+        )
+
+        sway = metrics.get('head_sway_cm')
+        c2.metric(
+            "Head sway",
+            f"{sway} cm" if sway else "N/A",
+            help="Horizontal head movement from address to top"
+        )
+
+        hip = metrics.get('hip_rotation_deg_top')
+        c3.metric(
+            "Hip rot @Top",
+            f"{hip}°" if hip else "N/A",
+            help="Hip line angle at top of backswing"
+        )
+
+        shoulder = metrics.get('shoulder_rotation_deg_top')
+        c4.metric(
+            "Shoulder rot @Top",
+            f"{shoulder}°" if shoulder else "N/A",
+            help="Shoulder line angle at top of backswing"
+        )
 
         # Additional metrics row
         c5, c6, c7, c8 = st.columns(4)
-        c5.metric("Lead wrist", f"{metrics.get('lead_wrist_set_deg_top', 'N/A')}°")
-        c6.metric("Pelvis slide", f"{metrics.get('pelvis_slide_cm', 'N/A')} cm")
-        c7.write("")  # placeholder
-        c8.write("")  # placeholder
+
+        wrist = metrics.get('lead_wrist_set_deg_top')
+        c5.metric(
+            "Lead wrist",
+            f"{wrist}°" if wrist else "N/A",
+            help="Lead arm bend at top (wrist hinge estimate)"
+        )
+
+        pelvis = metrics.get('pelvis_slide_cm')
+        c6.metric(
+            "Pelvis slide",
+            f"{pelvis} cm" if pelvis else "N/A",
+            help="Hip center lateral movement"
+        )
+
+        # Analysis info
+        if "analysis_info" in st.session_state:
+            info = st.session_state["analysis_info"]
+            c7.metric("Frames", f"{info.get('frames_with_pose', 0)}/{info.get('frames_processed', 0)}")
+            c8.metric("Duration", f"{info.get('duration_sec', 0):.1f}s")
 
         # Pointers from rules engine
         pointers, tags = analyze_with_goals(metrics, goals)
 
         st.subheader("Coaching Pointers")
+
+        if confidence == "low":
+            st.caption("*Lower confidence - take these suggestions with a grain of salt.*")
+
         for p in pointers:
             st.write("• " + p)
 
@@ -191,7 +334,9 @@ with tab_analyze:
                     if d.get("why"):
                         st.caption(f"**Why:** {d['why']}")
                     if d.get("equipment"):
-                        st.write(f"**Equipment:** {', '.join(d['equipment']) or 'None'}")
+                        equip = d['equipment']
+                        equip_str = ', '.join(equip) if equip else 'None'
+                        st.write(f"**Equipment:** {equip_str}")
                     st.write("**Steps:**")
                     for i, step in enumerate(d.get("steps", []), start=1):
                         st.write(f"{i}. {step}")

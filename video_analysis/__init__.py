@@ -1,4 +1,15 @@
 # video_analysis package - Video processing and pose analysis
-# This module will contain MediaPipe-based swing analysis in Task 2
 
-__all__ = []
+from video_analysis.analyzer import (
+    SwingAnalyzer,
+    AnalysisResult,
+    analyze_swing_video,
+)
+from video_analysis.metrics import SwingMetrics
+
+__all__ = [
+    "SwingAnalyzer",
+    "AnalysisResult",
+    "analyze_swing_video",
+    "SwingMetrics",
+]
