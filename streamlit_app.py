@@ -7,13 +7,15 @@ from pathlib import Path
 # ---- Package imports ----
 from coaching import (
     analyze_with_goals,
+    analyze_with_goals_detailed,
+    get_pointer_drills,
     CLUB_GOALS,
     DEFAULT_GOALS,
     map_tags_to_drill_tags,
     tag_to_drills,
     load_drills,
+    get_goals_for_club,
 )
-from coaching.goals import get_goals_for_club
 from capture import get_recs, draw_overlay_grid, GuideProcessor, EchoTestProcessor
 from core.report import render_pdf
 
@@ -309,37 +311,66 @@ with tab_analyze:
             c7.metric("Frames", f"{info.get('frames_with_pose', 0)}/{info.get('frames_processed', 0)}")
             c8.metric("Duration", f"{info.get('duration_sec', 0):.1f}s")
 
-        # Pointers from rules engine
-        pointers, tags = analyze_with_goals(metrics, goals)
+        # Load drills for pointer-specific recommendations
+        drills = load_drills()
+
+        # Get detailed pointers from rules engine
+        detailed_pointers = analyze_with_goals_detailed(metrics, goals, confidence)
+
+        # Also get simple format for backward compatibility (report, etc.)
+        pointers, tags = analyze_with_goals(metrics, goals, confidence)
 
         st.subheader("Coaching Pointers")
 
         if confidence == "low":
-            st.caption("*Lower confidence - take these suggestions with a grain of salt.*")
+            st.caption("*Lower confidence detection - take these suggestions with a grain of salt.*")
 
-        for p in pointers:
-            st.write("• " + p)
+        if not detailed_pointers:
+            st.success("Swing fundamentals look solid. Keep practicing for consistency!")
+        else:
+            # Priority labels
+            priority_icons = {1: "🔴", 2: "🟠", 3: "🟡", 4: "🟢", 5: "⚪"}
 
-        # Drills from YAML
-        drills = load_drills()
+            for pointer in detailed_pointers:
+                icon = priority_icons.get(pointer.priority, "⚪")
+
+                with st.expander(f"{icon} {pointer.message}", expanded=(pointer.priority <= 2)):
+                    # Why it matters
+                    st.markdown(f"**Why it matters:** {pointer.why}")
+
+                    # Confidence label
+                    if pointer.confidence == "low":
+                        st.caption("⚠️ *Low confidence - verify with additional video*")
+
+                    # Associated drills
+                    pointer_drills = get_pointer_drills(pointer, drills) if drills else []
+                    if pointer_drills:
+                        st.markdown("**Recommended drills:**")
+                        for d in pointer_drills[:3]:  # Show top 3 drills
+                            st.markdown(f"- **{d['name']}** ({d.get('difficulty', 'all levels')})")
+                            if d.get("why"):
+                                st.caption(f"  {d['why']}")
+
+        # Show all suggested drills section
         if drills:
             drill_tags = map_tags_to_drill_tags(tags)
-            suggestions = tag_to_drills(drill_tags, drills)
+            all_suggestions = tag_to_drills(drill_tags, drills)
 
-            st.subheader("Suggested Drills")
-            if not suggestions:
-                st.info("No specific drills needed - your fundamentals look good!")
-            for d in suggestions:
-                with st.expander(f"🏌️ {d['name']} ({d.get('difficulty', 'all levels')})"):
-                    if d.get("why"):
-                        st.caption(f"**Why:** {d['why']}")
-                    if d.get("equipment"):
-                        equip = d['equipment']
-                        equip_str = ', '.join(equip) if equip else 'None'
-                        st.write(f"**Equipment:** {equip_str}")
-                    st.write("**Steps:**")
-                    for i, step in enumerate(d.get("steps", []), start=1):
-                        st.write(f"{i}. {step}")
+            if all_suggestions:
+                st.subheader("All Suggested Drills")
+                st.caption("Drills to address the issues identified above")
+
+                for d in all_suggestions:
+                    with st.expander(f"🏌️ {d['name']} ({d.get('difficulty', 'all levels')})"):
+                        if d.get("why"):
+                            st.markdown(f"**Why:** {d['why']}")
+                        if d.get("equipment"):
+                            equip = d['equipment']
+                            equip_str = ', '.join(equip) if equip else 'None needed'
+                            st.write(f"**Equipment:** {equip_str}")
+                        st.write("**Steps:**")
+                        for i, step in enumerate(d.get("steps", []), start=1):
+                            st.write(f"{i}. {step}")
         else:
             st.warning("Drills database not found.")
 
