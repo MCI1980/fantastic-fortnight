@@ -215,7 +215,9 @@ def evaluate_club(club: str, row: pd.Series, handedness: str = "right") -> List[
 
     # 9/10. Iron low point
     if is_iron_like and cat != "Hybrid":
+        attack_rule_fired = False
         if _isnum(attack) and attack > g["attack_max"]:
+            attack_rule_fired = True
             ps.append(CoachingPointer(
                 rule_id="iron_attack_shallow", club=club,
                 message=f"{club}: attack angle is {attack:+.1f}° (not hitting down enough)",
@@ -229,7 +231,23 @@ def evaluate_club(club: str, row: pd.Series, handedness: str = "right") -> List[
                 check={"metric": "attack_mean", "club": club, "op": "<=", "value": float(g["attack_max"])},
                 confidence=conf, n=n,
             ))
-        elif _isnum(spin_loft) and "spin_loft_max" in g and spin_loft > g["spin_loft_max"]:
+        elif _isnum(attack) and attack < g["attack_min"] - 0.5:
+            attack_rule_fired = True
+            ps.append(CoachingPointer(
+                rule_id="iron_attack_steep", club=club,
+                message=f"{club}: attack angle is {attack:.1f}° (very steep)",
+                why=("A very steep strike with irons almost always pairs with an out-to-in path: the over-the-top move. "
+                     "It adds spin loft, costs ball speed, digs, and makes distance unpredictable. Shallowing the "
+                     "approach fixes the path and the strike together."),
+                priority=3,
+                tags=["over_the_top", "path", "low_point"],
+                metric_name="attack_mean", measured_value=float(attack), target_value=float(g["attack_min"]),
+                target_text=f"attack angle between {g['attack_min']:+.0f}° and {g['attack_max']:+.0f}°",
+                success_criterion=f"Average {club} attack angle between {g['attack_min']:+.0f}° and -2° over 10 shots",
+                check={"metric": "attack_mean", "club": club, "op": ">=", "value": float(g["attack_min"])},
+                confidence=conf, n=n,
+            ))
+        if not attack_rule_fired and _isnum(spin_loft) and "spin_loft_max" in g and spin_loft > g["spin_loft_max"]:
             ps.append(CoachingPointer(
                 rule_id="iron_spin_loft_high", club=club,
                 message=f"{club}: spin loft is {spin_loft:.0f}° (adding loft at impact)",

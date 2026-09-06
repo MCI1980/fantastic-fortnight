@@ -91,6 +91,16 @@ class TestClubRules:
         ids = [p.rule_id for p in evaluate_club("8 Iron", _row(attack_mean=0.5))]
         assert "iron_attack_shallow" in ids
 
+    def test_iron_too_steep_suppresses_spin_loft_rule(self):
+        ids = [p.rule_id for p in evaluate_club("8 Iron", _row(attack_mean=-9.0, spin_loft_mean=31.0))]
+        assert "iron_attack_steep" in ids
+        assert "iron_spin_loft_high" not in ids
+        assert "iron_attack_shallow" not in ids
+
+    def test_iron_within_window_no_attack_rule(self):
+        ids = [p.rule_id for p in evaluate_club("8 Iron", _row(attack_mean=-4.0))]
+        assert not any(r.startswith("iron_attack") for r in ids)
+
     def test_wedge_distance_control(self):
         ps = evaluate_club("SW", _row(attack_mean=-4, spin_mean=9000, launch_mean=30, smash_mean=1.2, carry_std=10, carry_cv=0.12, side_std=5))
         assert [p.rule_id for p in ps] == ["distance_inconsistent"]

@@ -62,14 +62,26 @@ COLUMN_ALIASES: Dict[str, List[str]] = {
     "spin_rate_rpm": ["spinrate", "totalspin", "spin", "backspin"],
     "spin_axis_deg": ["spinaxis", "axis", "spintilt"],
 
-    "height_yds": ["height", "maxheight", "apex", "peakheight", "apexheight"],
-    "carry_yds": ["carry", "carrydistance", "carrydist", "carryyds"],
-    "total_yds": ["total", "totaldistance", "totaldist", "totalyds"],
-    "side_yds": ["side", "carryside", "sidecarry", "offline", "lateral", "carryoffline", "sidecarrydist"],
-    "side_total_yds": ["sidetotal", "totalside", "offlinetotal", "totaloffline", "sidetot"],
-    "landing_angle_deg": ["landangle", "landingangle", "descentangle", "landang", "landing"],
-    "hang_time_s": ["hangtime", "flighttime", "airtime"],
+    "height_yds": ["height", "maxheight", "apex", "peakheight", "apexheight", "maxheightheight"],
+    "carry_yds": ["carry", "carrydistance", "carrydist", "carryyds", "carryflatlength", "carryflat"],
+    "total_yds": ["total", "totaldistance", "totaldist", "totalyds", "esttotalflatlength", "totalflatlength", "esttotalflat", "esttotal", "estimatedtotal"],
+    "side_yds": ["side", "carryside", "sidecarry", "offline", "lateral", "carryoffline", "sidecarrydist", "carryflatside"],
+    "side_total_yds": ["sidetotal", "totalside", "offlinetotal", "totaloffline", "sidetot", "esttotalflatside", "totalflatside", "esttotalside"],
+    "landing_angle_deg": ["landangle", "landingangle", "descentangle", "landang", "landing", "carryflatlandangle", "carryflatlandingangle"],
+    "hang_time_s": ["hangtime", "flighttime", "airtime", "carryflattime"],
     "curve_yds": ["curve", "curvature"],
+    "use_in_stat": ["useinstat", "includeinstats", "usedinstats"],
+}
+
+# Normalized header keys that must never be mapped (TPS bookkeeping and
+# columns that would otherwise prefix-match a measurement).
+IGNORE_KEYS = {
+    "tmdno", "tmdfilename", "email", "condition", "dynamiclie",
+    "maxheightdist", "maxheightside",
+    "lastdatapointlength", "lastdatapointside", "lastdatapointheight", "lastdatapointtime",
+    "carryflatballspeed", "spinratetype",
+    "ballspeeddiff", "smashindex", "spinratediff", "spinindex", "gyroangle", "dplanetilt",
+    "swingradius", "lowpointheight", "lowpointside",
 }
 
 # Longest aliases first so prefix matching prefers the most specific alias.
@@ -158,11 +170,17 @@ def map_columns(headers: List[str]) -> Tuple[Dict[str, str], Dict[str, str], Lis
     unmapped: List[str] = []
     taken = set()
 
-    for header in headers:
-        if header is None or str(header).strip() == "":
-            continue
+    # Measured columns first; "(Sim)" duplicates only fill slots still free.
+    ordered = sorted(
+        [h for h in headers if h is not None and str(h).strip() != ""],
+        key=lambda h: 1 if "(sim)" in str(h).lower() else 0,
+    )
+    for header in ordered:
         name, unit = _split_unit(header)
         key = _norm(name)
+        if key in IGNORE_KEYS or _norm(header) in IGNORE_KEYS:
+            unmapped.append(str(header))
+            continue
         canon = _EXACT_ALIAS.get(key)
         if canon is None:
             for alias, c in _ALIAS_INDEX:
@@ -326,12 +344,20 @@ def _find_header_row(lines: List[str], delimiter: str) -> Tuple[int, Dict[str, s
     return best
 
 
+def _unit_token(cell) -> str:
+    """'[mph]' / '(yds)' / ' deg ' -> 'mph' / 'yds' / 'deg'; '[]' -> ''."""
+    if cell is None:
+        return ""
+    return re.sub(r"[\[\]\(\)\s]", "", str(cell)).lower()
+
+
 def _is_units_row(cells: List[str]) -> bool:
-    non_empty = [c.strip() for c in cells if c is not None and str(c).strip() != ""]
+    tokens = [_unit_token(c) for c in cells]
+    non_empty = [t for t in tokens if t not in ("", "-")]
     if not non_empty:
         return False
-    unit_like = sum(1 for c in non_empty if c.lower() in UNIT_ALIASES)
-    numeric = sum(1 for c in non_empty if not np.isnan(parse_number(c)))
+    unit_like = sum(1 for t in non_empty if t in UNIT_ALIASES)
+    numeric = sum(1 for t in non_empty if not np.isnan(parse_number(t)))
     return numeric == 0 and unit_like >= max(1, len(non_empty) // 2)
 
 
@@ -354,12 +380,20 @@ def _parse_dates(date_col: Optional[pd.Series], time_col: Optional[pd.Series]) -
         t = time_col.astype(str).str.strip()
         has_time = text.str.contains(r"\d{1,2}:\d{2}")
         text = text.where(has_time, text + " " + t)
-    parsed = pd.to_datetime(text, errors="coerce")
+    parsed = _to_datetime(text)
     if parsed.isna().mean() > 0.5:
-        alt = pd.to_datetime(text, errors="coerce", dayfirst=True)
+        alt = _to_datetime(text, dayfirst=True)
         if alt.notna().sum() > parsed.notna().sum():
             parsed = alt
     return parsed
+
+
+def _to_datetime(text: pd.Series, dayfirst: bool = False) -> pd.Series:
+    """Parse mixed date formats without pandas' per-element inference warning."""
+    try:
+        return pd.to_datetime(text, errors="coerce", format="mixed", dayfirst=dayfirst)
+    except (TypeError, ValueError):  # pandas < 2.0
+        return pd.to_datetime(text, errors="coerce", dayfirst=dayfirst)
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +455,7 @@ def parse_trackman_csv(source: Union[str, bytes, Path], source_name: Optional[st
     # Units row directly under the header?
     if len(raw_df) > 0 and _is_units_row(list(raw_df.iloc[0].values)):
         for orig, canon in mapping.items():
-            u = UNIT_ALIASES.get(str(raw_df.iloc[0][orig]).strip().lower())
+            u = UNIT_ALIASES.get(_unit_token(raw_df.iloc[0][orig]))
             if u:
                 units[canon] = u
         raw_df = raw_df.iloc[1:].reset_index(drop=True)
@@ -466,6 +500,14 @@ def parse_trackman_csv(source: Union[str, bytes, Path], source_name: Optional[st
         return result
     keep = out[present_required].notna().any(axis=1)
     out = out[keep].reset_index(drop=True)
+
+    # Shots the golfer excluded from stats in TPS ("Use In Stat" = FALSE)
+    if "use_in_stat" in out.columns:
+        excluded = out["use_in_stat"].astype(str).str.strip().str.upper().isin(("FALSE", "0", "NO"))
+        if excluded.any():
+            result.warnings.append(f"Skipped {int(excluded.sum())} shot(s) marked 'Use In Stat = FALSE' in TPS.")
+            out = out[~excluded].reset_index(drop=True)
+        out = out.drop(columns=["use_in_stat"])
 
     # Clubs
     if "club" in out.columns:
