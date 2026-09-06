@@ -181,6 +181,43 @@
   why: "Smash factor tells you contact is off-centre; the spray tells you which way, so the fix is specific."
   trackman_watch: "Smash Factor and Ball Speed"
 
+- name: "Heel Strike Fix: Tee Outside the Toe"
+  tags: [strike, strike_heel]
+  where: sim
+  difficulty: beginner
+  equipment: ["a tee"]
+  steps:
+    - "Push a tee into the mat just outside the toe of the club at address, about a ball-width from the ball."
+    - "Hit 8-irons without touching the tee. To miss it the club must return closer to you than it has been."
+    - "Stand a fraction further from the ball and feel the arms extend through impact; keep your chest from diving toward the ball."
+    - "Check Impact Offset after each shot. Goal: 7 of 10 within 10 mm of centre."
+  why: "Heel strikes almost always come from the body moving toward the ball in the downswing or standing too close. The tee gives instant, physical feedback."
+  trackman_watch: "Impact Offset and Smash Factor"
+
+- name: "Toe Strike Fix: Chest Over the Ball"
+  tags: [strike, strike_toe]
+  where: sim
+  difficulty: beginner
+  equipment: []
+  steps:
+    - "Set up with the ball slightly closer, weight in the middle of the feet, chest over the ball rather than behind it."
+    - "Hit half swings feeling the club stay 'long' through impact (no pulling the handle in toward the body)."
+    - "Progress to full swings. Goal: 7 of 10 within 10 mm of centre."
+  why: "Toe strikes come from early extension or pulling the arms in; the fix is in posture and staying down through the ball."
+  trackman_watch: "Impact Offset"
+
+- name: "Low Strike Fix: Level the Bottom"
+  tags: [strike, strike_low, low_point]
+  where: sim
+  difficulty: beginner
+  equipment: ["towel", "tee"]
+  steps:
+    - "Irons: place a towel 6 inches behind the ball and hit ball then mat, feeling the hands ahead at impact so the club does not bottom out early."
+    - "Driver: tee it so half the ball sits above the crown and play it off the lead heel; hit up on it."
+    - "Watch Impact Height: goal is an average within 5 mm of centre for irons and slightly above centre for the driver."
+  why: "Low-face strikes are a low-point problem with irons and a tee-height problem with the driver."
+  trackman_watch: "Impact Height, Attack Angle"
+
 # ------------------------------------------------------- distance control
 - name: "Clock System Wedges"
   tags: [distance_control, wedge_distance, approach]

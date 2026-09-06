@@ -27,6 +27,14 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py --server.address 0.0.0.0
 ```
 
+### Keeping it running
+
+The app stops when the `run_app.bat` window is closed or the PC sleeps. To make it start hidden at every login and keep the PC awake while plugged in, double-click **`install_autostart.bat`** once (after the first `run_app.bat` run). Then:
+
+- `stop_app.bat` stops it, `run_app.bat` or a reboot starts it again
+- `remove_autostart.bat` undoes the autostart
+- output goes to `data\store\app.log`
+
 ### Reaching it away from home
 
 Install [Tailscale](https://tailscale.com) (free) on the PC and your phone; then the same URL works from anywhere. Or download the yardage card PNG from **My Numbers** and keep it on your phone.
@@ -50,6 +58,16 @@ Notes:
 - The importer handles comma/semicolon files, a units row, km/h and metres, `5.2 R` / `L 3.1` side values, and drops the *Average / Std Dev* rows.
 
 You can also drag files onto the **Import** tab.
+
+**Tags.** Use the TPS **Tag** button before a set (clear it afterwards):
+
+| Tag | Effect |
+|---|---|
+| `warmup`, `drill` (or `drill: gate`) | kept, but excluded from the yardage card and coaching rules |
+| `game` | scores every practice game that fits the club |
+| `game: fairway finder` | scores that game only |
+
+**Impact location.** TrackMan 4 exports `Impact Offset` and `Impact Height` (mm from face centre). The app draws a strike map per club and adds heel / toe / low-on-the-face findings with matching drills.
 
 ### Rounds
 

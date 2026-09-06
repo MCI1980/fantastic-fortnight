@@ -13,6 +13,7 @@ import pandas as pd
 
 from analysis.gapping import club_summary
 from analysis.scoring import benchmark_for
+from analysis.strike import IMPACT_TOE_POSITIVE, LOW_BIAS_MM, OFFSET_BIAS_MM, SCATTER_MM
 from analysis.tendencies import expected_smash
 from coaching.goals import get_goals_for_category
 from integrations.trackman import club_category
@@ -318,6 +319,58 @@ def evaluate_club(club: str, row: pd.Series, handedness: str = "right") -> List[
             check=check,
             confidence=conf, n=n,
         ))
+
+    # 15. Impact location (TrackMan impact offset / height, mm from face centre)
+    impact_n_raw = row.get("impact_n", 0)
+    impact_n = int(impact_n_raw) if _isnum(impact_n_raw) else 0
+    off = row.get("impact_offset_mean")
+    hgt = row.get("impact_height_mean")
+    off_std = row.get("impact_offset_std")
+    if impact_n >= 6:
+        toe_sign = 1.0 if IMPACT_TOE_POSITIVE else -1.0
+        if _isnum(off) and abs(off) > OFFSET_BIAS_MM:
+            side_word = "toe" if off * toe_sign > 0 else "heel"
+            ps.append(CoachingPointer(
+                rule_id=f"strike_{side_word}", club=club,
+                message=f"{club}: strikes average {abs(off):.0f} mm toward the {side_word}",
+                why=(f"A consistent {side_word} strike costs ball speed and twists the face at impact, which is where a lot of "
+                     "your smash-factor spread and side dispersion comes from. Setup distance to the ball usually fixes it."),
+                priority=3,
+                tags=["strike", f"strike_{side_word}"],
+                metric_name="impact_offset_mean", measured_value=float(off), target_value=0.0,
+                target_text=f"average strike within ±{OFFSET_BIAS_MM:.0f} mm of centre",
+                success_criterion=f"7 of 10 {club} strikes within 10 mm of face centre (heel-toe)",
+                check={"metric": "impact_offset_mean", "club": club, "op": "abs<=", "value": float(OFFSET_BIAS_MM)},
+                confidence=conf, n=impact_n,
+            ))
+        low_limit = LOW_BIAS_MM["Driver"] if cat == "Driver" else LOW_BIAS_MM["default"]
+        if _isnum(hgt) and hgt < low_limit:
+            ps.append(CoachingPointer(
+                rule_id="strike_low_face", club=club,
+                message=f"{club}: strikes average {abs(hgt):.0f} mm low on the face",
+                why=("Low-face strikes launch lower with more spin and less ball speed. With irons it usually means the low "
+                     "point is behind the ball; with the driver it usually means the tee is too low."),
+                priority=3,
+                tags=["strike", "strike_low", "low_point"] if cat != "Driver" else ["strike", "strike_low", "attack_angle_driver"],
+                metric_name="impact_height_mean", measured_value=float(hgt), target_value=float(low_limit),
+                target_text=f"average strike higher than {low_limit:.0f} mm",
+                success_criterion=f"Average {club} strike height above {low_limit:.0f} mm over 10 shots",
+                check={"metric": "impact_height_mean", "club": club, "op": ">=", "value": float(low_limit)},
+                confidence=conf, n=impact_n,
+            ))
+        elif _isnum(off_std) and off_std > SCATTER_MM and not any(p.rule_id.startswith("strike_") for p in ps):
+            ps.append(CoachingPointer(
+                rule_id="strike_scatter", club=club,
+                message=f"{club}: strike location varies ±{off_std:.0f} mm across the face",
+                why="No single bias, just a scattered strike. That is a balance and setup consistency problem more than a swing fault.",
+                priority=4,
+                tags=["strike", "tempo"],
+                metric_name="impact_offset_std", measured_value=float(off_std), target_value=float(SCATTER_MM),
+                target_text=f"heel-toe spread under ±{SCATTER_MM:.0f} mm",
+                success_criterion=f"Heel-toe strike spread (±) under {SCATTER_MM:.0f} mm over 10 {club} shots",
+                check={"metric": "impact_offset_std", "club": club, "op": "<=", "value": float(SCATTER_MM)},
+                confidence=conf, n=impact_n,
+            ))
 
     # 14. Low spin irons (cannot hold greens)
     if is_iron_like and cat != "Hybrid" and _isnum(spin) and spin < g["spin_min"] and _isnum(carry_med):

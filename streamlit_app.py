@@ -20,13 +20,16 @@ from analysis import (
     club_summary,
     club_tendencies,
     filter_valid,
+    impact_summary,
     load_games,
     miss_pattern,
     prepare_shots,
     recent_shots,
     score_game,
+    stats_shots,
     strike_quality,
     strokes_lost,
+    tagged_game_results,
     yardage_card,
 )
 from analysis.games import game_applies_to_club
@@ -142,12 +145,13 @@ elif settings.auto_scan and settings.export_folder:
 raw_shots = shot_store.load_shots()
 all_shots = filter_valid(prepare_shots(raw_shots, settings.handedness, settings.flip_side_sign))
 recent = recent_shots(all_shots, settings.recent_days)
-summary = club_summary(recent, min_shots=settings.min_shots_per_club)
-summary_any = club_summary(recent, min_shots=1)
+stats = stats_shots(recent)                       # drill / warm-up balls excluded
+summary = club_summary(stats, min_shots=settings.min_shots_per_club)
+summary_any = club_summary(stats, min_shots=1)
 rounds = round_store.load()
 rounds_agg = aggregate_rounds(rounds)
 
-shot_pointers = evaluate_shots(recent, settings.handedness, min_shots=max(8, settings.min_shots_per_club))
+shot_pointers = evaluate_shots(stats, settings.handedness, min_shots=max(8, settings.min_shots_per_club))
 round_pointers = evaluate_rounds(rounds_agg, settings.target_score)
 priorities = top_priorities(shot_pointers, round_pointers, k=3)
 
@@ -259,6 +263,11 @@ with tab_import:
 5. Save it into the folder you set in the sidebar. Done: the app imports it on the next load.
 
 *The export only exists in TPS on the simulator PC and needs an active TrackMan software subscription. Tag the club in TPS before each set so the file carries club names.*
+
+**Tags that the app understands** (set with the **Tag** button before a set, clear it afterwards):
+
+- `warmup` or `drill` — kept, but excluded from your yardage card and coaching numbers
+- `game` — scores every game that fits the club; `game: fairway finder` scores that game only
             """
         )
 
@@ -289,7 +298,12 @@ with tab_numbers:
         st.info(f"Need at least {settings.min_shots_per_club} shots per club in the last {settings.recent_days} days. Import a session or lower the minimum in the sidebar.")
     else:
         st.subheader("Yardage card")
-        st.caption(f"Last {settings.recent_days} days · {int(recent.shape[0])} shots · Safe = 20th percentile carry, Plan = median, Max = 80th percentile, ± = one-sigma side spread")
+        excluded = int(recent.shape[0] - stats.shape[0])
+        st.caption(
+            f"Last {settings.recent_days} days · {int(stats.shape[0])} shots"
+            + (f" ({excluded} drill/warm-up balls excluded)" if excluded else "")
+            + " · Safe = 20th percentile carry, Plan = median, Max = 80th percentile, ± = one-sigma side spread"
+        )
         card = yardage_card(summary, settings.handedness)
         st.dataframe(card, hide_index=True)
         png = render_yardage_card(card, title="My Numbers", subtitle=f"Last {settings.recent_days} days · {date.today().isoformat()}", handedness=settings.handedness)
@@ -313,7 +327,7 @@ with tab_numbers:
         st.subheader("Club detail")
         clubs = sorted(summary_any.index.tolist(), key=club_sort_key)
         club = st.selectbox("Club", clubs, key="numbers_club")
-        sub = recent[recent["club"] == club]
+        sub = stats[stats["club"] == club]
         row = summary_any.loc[club]
         m1, m2, m3, m4, m5, m6 = st.columns(6)
         m1.metric("Shots", int(row["shots"]))
@@ -346,6 +360,13 @@ with tab_numbers:
             sq = strike_quality(sub, club)
             if sq.get("n"):
                 st.caption(f"Solid strikes: {sq['pct_solid']:.0f}% of shots at or near smash {sq['expected']:.2f}")
+
+        imp = impact_summary(sub, club)
+        if imp.get("n"):
+            st.markdown(f"**Strike location on the face** — average **{imp['label']}** ({imp['n']} shots with impact data)")
+            st.caption("Each dot is one strike, in millimetres from face centre. Left = heel, right = toe; down = low, up = high.")
+            pts = imp["points"]
+            st.scatter_chart(pts, x=pts.columns[0], y=pts.columns[1])
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +410,19 @@ with tab_coach:
 
         if has_shots and GAMES:
             st.subheader("Scored games")
-            st.caption("Scores are computed from the last 10 shots of the chosen club in your most recent session that used it.")
+            tagged = tagged_game_results(all_shots, GAMES)
+            if tagged:
+                st.markdown("**Sets you tagged `game` in TPS** — scored automatically")
+                rows = [{
+                    "Date": r["date"].strftime("%Y-%m-%d") if r.get("date") is not None and not pd.isna(r["date"]) else "",
+                    "Club": r["club"],
+                    "Game": r["game"] + ("" if r.get("named") else " (auto)"),
+                    "Score": f"{r['points']} / {r['max_points']}",
+                    "Shots": r["shots_used"],
+                } for r in tagged[:30]]
+                st.dataframe(pd.DataFrame(rows), hide_index=True)
+                st.caption("Tag a set 'game: fairway finder' to score one game, or just 'game' to score every game that fits the club.")
+            st.caption("Manual check: scores from the last 10 shots of the chosen club in your most recent session that used it.")
             gcol1, gcol2 = st.columns(2)
             game_names = [g["name"] for g in GAMES]
             game_name = gcol1.selectbox("Game", game_names, key="game_pick")

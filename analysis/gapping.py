@@ -74,6 +74,11 @@ def club_summary(df: pd.DataFrame, min_shots: int = 3) -> pd.DataFrame:
     add("dyn_loft_mean", "dynamic_loft_deg", "mean")
     add("height_mean", "height_yds", "mean")
     add("land_angle_mean", "landing_angle_deg", "mean")
+    add("impact_offset_mean", "impact_offset_mm", "mean")
+    add("impact_offset_std", "impact_offset_mm", "std")
+    add("impact_height_mean", "impact_height_mm", "mean")
+    add("impact_height_std", "impact_height_mm", "std")
+    add("impact_n", "impact_offset_mm", "count")
     add("last_date", "date", "max")
 
     out["carry_cv"] = out["carry_std"] / out["carry_med"]

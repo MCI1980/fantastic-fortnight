@@ -9,14 +9,50 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
-from typing import Optional
+from typing import List, Optional
 
 import pandas as pd
 
 from integrations.base import SIGNED_FIELDS
 
 SIDE_FIELDS = ["side_yds", "side_total_yds", "curve_yds"]
+
+# Shot roles derived from TPS tags. Tag a set "drill", "warmup" or "game"
+# (optionally "game: fairway finder") in TPS before hitting it.
+ROLE_NORMAL = "normal"
+ROLE_DRILL = "drill"
+ROLE_WARMUP = "warmup"
+ROLE_GAME = "game"
+STATS_ROLES = (ROLE_NORMAL, ROLE_GAME)   # roles that count toward the yardage card and rules
+
+
+def split_tags(value) -> List[str]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return []
+    text = str(value).strip()
+    if not text or text.lower() in ("nan", "none"):
+        return []
+    return [t.strip().lower() for t in re.split(r"[,;|/]+", text) if t.strip()]
+
+
+def shot_role(tags) -> str:
+    for t in split_tags(tags):
+        if t.startswith("drill"):
+            return ROLE_DRILL
+        if t.startswith("warm"):
+            return ROLE_WARMUP
+        if t.startswith("game"):
+            return ROLE_GAME
+    return ROLE_NORMAL
+
+
+def stats_shots(df: pd.DataFrame) -> pd.DataFrame:
+    """Shots that should feed the yardage card and coaching rules (no drill/warm-up balls)."""
+    if df is None or df.empty or "role" not in df.columns:
+        return df if df is not None else pd.DataFrame()
+    return df[df["role"].isin(STATS_ROLES)].reset_index(drop=True)
 
 
 def prepare_shots(df: pd.DataFrame, handedness: str = "right", flip_side_sign: bool = False) -> pd.DataFrame:
@@ -34,6 +70,7 @@ def prepare_shots(df: pd.DataFrame, handedness: str = "right", flip_side_sign: b
                 out[col] = -out[col]
     if "date" in out.columns:
         out["date"] = pd.to_datetime(out["date"], errors="coerce")
+    out["role"] = out["tags"].map(shot_role) if "tags" in out.columns else ROLE_NORMAL
     return out
 
 

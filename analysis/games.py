@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -26,6 +27,65 @@ def load_games(path: Optional[Path] = None) -> List[Dict]:
 def games_for_tags(tags: List[str], games: List[Dict]) -> List[Dict]:
     tagset = set(tags or [])
     return [g for g in games if tagset & set(g.get("tags", []))]
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(text).lower())
+
+
+def match_game(tag: str, games: List[Dict]) -> Optional[Dict]:
+    """
+    Match a TPS tag like 'game: fairway finder', 'game-smash_ten' or
+    'fairway finder' to a game definition. Returns None for a bare 'game'.
+    """
+    key = _norm(tag)
+    if key.startswith("game"):
+        key = key[4:]
+    if not key:
+        return None
+    for g in games:
+        if key in (_norm(g.get("id", "")), _norm(g.get("name", ""))):
+            return g
+    for g in games:
+        if len(key) >= 4 and (_norm(g.get("name", "")).startswith(key) or _norm(g.get("id", "")).startswith(key)):
+            return g
+    return None
+
+
+def tagged_game_results(shots: pd.DataFrame, games: List[Dict]) -> List[Dict]:
+    """
+    Score every set of shots tagged 'game' in TPS. A tag naming the game
+    ('game: face control') scores that game; a bare 'game' tag scores every
+    game that applies to the club. One result per (session, club, game).
+    """
+    if shots is None or shots.empty or "role" not in shots.columns:
+        return []
+    from analysis.prep import split_tags  # local import to avoid a cycle
+    sub = shots[shots["role"] == "game"]
+    if sub.empty:
+        return []
+    results: List[Dict] = []
+    for (session_id, club), grp in sub.groupby(["session_id", "club"]):
+        tags = set()
+        for v in grp.get("tags", pd.Series(dtype=str)):
+            tags.update(split_tags(v))
+        named = [g for g in (match_game(t, games) for t in tags) if g]
+        candidates = named or [g for g in games if game_applies_to_club(g, club)]
+        seen = set()
+        for g in candidates:
+            if g.get("id") in seen:
+                continue
+            seen.add(g.get("id"))
+            r = score_game(g, grp, club)
+            r.update({
+                "session_id": session_id,
+                "date": pd.to_datetime(grp["date"]).min() if "date" in grp.columns else None,
+                "game_id": g.get("id"),
+                "named": bool(named),
+            })
+            results.append(r)
+    results.sort(key=lambda r: (r.get("date") is None, r.get("date")), reverse=True)
+    return results
 
 
 def game_applies_to_club(game: Dict, club: str) -> bool:
