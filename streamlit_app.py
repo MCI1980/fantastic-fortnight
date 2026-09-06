@@ -1,642 +1,637 @@
 # streamlit_app.py
-# Main entry point for the Golf Swing Coach application
+# Golf Coach - TrackMan-driven practice planning for the 80s golfer.
+#
+# Run on the simulator PC:  streamlit run streamlit_app.py
+# Then open the printed Network URL on your phone (same Wi-Fi).
 
-import streamlit as st
+from __future__ import annotations
+
+import time
+from datetime import date, datetime
 from pathlib import Path
 
-# ---- Package imports ----
+import pandas as pd
+import streamlit as st
+
+from analysis import (
+    aggregate_rounds,
+    bag_gaps,
+    benchmark_for,
+    club_summary,
+    club_tendencies,
+    filter_valid,
+    load_games,
+    miss_pattern,
+    prepare_shots,
+    recent_shots,
+    score_game,
+    strike_quality,
+    strokes_lost,
+    yardage_card,
+)
+from analysis.games import game_applies_to_club
+from analysis.scoring import CATEGORY_LABELS, rounds_frame
 from coaching import (
-    analyze_with_goals,
-    analyze_with_goals_detailed,
+    build_weekly_plan,
+    evaluate_check,
+    evaluate_rounds,
+    evaluate_shots,
     get_pointer_drills,
-    CLUB_GOALS,
-    DEFAULT_GOALS,
-    map_tags_to_drill_tags,
-    tag_to_drills,
     load_drills,
-    get_goals_for_club,
+    top_priorities,
 )
-from capture import get_recs, draw_overlay_grid, GuideProcessor, EchoTestProcessor, create_guide_processor
-from core.report import render_pdf
+from core.report import render_yardage_card
+from data import HoleResult, Round, RoundStore, Settings, SettingsStore, ShotStore
+from data.plans import PlanStore
+from integrations import parse_rounds_csv
+from integrations.trackman import club_sort_key
 
-# Video analysis import (with graceful fallback)
-try:
-    from video_analysis import analyze_swing_video, AnalysisResult
-    VIDEO_ANALYSIS_AVAILABLE = True
-except ImportError:
-    VIDEO_ANALYSIS_AVAILABLE = False
-    AnalysisResult = None
+# ---------------------------------------------------------------------------
+# Page setup
+# ---------------------------------------------------------------------------
 
-# Session storage import
-from data import Session, get_session_store
+st.set_page_config(page_title="Golf Coach", page_icon="⛳", layout="wide", initial_sidebar_state="expanded")
 
-# Integrations import
-from integrations import FEATURE_FLAGS, get_available_integrations, is_feature_enabled
+settings_store = SettingsStore()
+settings: Settings = settings_store.load()
+shot_store = ShotStore()
+round_store = RoundStore()
+plan_store = PlanStore()
+DRILLS = load_drills()
+GAMES = load_games()
 
-# WebRTC imports
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+PRIORITY_ICON = {1: "🔴", 2: "🟠", 3: "🟡", 4: "🟢", 5: "⚪"}
+CONF_ICON = {"high": "●●●", "medium": "●●○", "low": "●○○"}
 
-# ---- Page Config ----
-st.set_page_config(
-    page_title="Golf Swing Coach",
-    page_icon="⛳",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-)
 
-# ---- Sidebar: Pro Features (Coming Soon) ----
+# ---------------------------------------------------------------------------
+# Sidebar: settings + folder scan
+# ---------------------------------------------------------------------------
+
 with st.sidebar:
-    st.header("Pro Features")
-    st.caption("Coming Soon")
-
-    integrations = get_available_integrations()
-
-    for int_id, info in integrations.items():
-        status_badge = {
-            "coming_soon": "🔜",
-            "planned": "📋",
-            "available": "✅",
-        }.get(info.get("status", "planned"), "📋")
-
-        with st.expander(f"{info['icon']} {info['name']} {status_badge}"):
-            st.write(info["description"])
-            st.caption(f"Features: {', '.join(info['features'])}")
-
-            if info["status"] == "coming_soon":
-                st.info("Integration coming soon. Stay tuned!")
-            elif info["status"] == "planned":
-                st.caption("On our roadmap")
-
-    st.divider()
-    st.caption("Want an integration? [Request here](https://github.com)")
-
-# ---- Tabs ----
-tab_capture, tab_analyze, tab_progress = st.tabs(["Capture", "Analyze", "Progress"])
-
-# =========================
-# Capture Tab
-# =========================
-with tab_capture:
-    st.subheader("Capture your swing")
-
-    # --- Setup section ---
-    setup_col1, setup_col2 = st.columns(2)
-
-    with setup_col1:
-        # Club selection
-        clubs = ["Driver", "3W", "Hybrid", "Long Iron", "Mid Iron", "Short Iron", "Wedge"]
-        club = st.selectbox("Club", clubs, index=0)
-        st.session_state["club"] = club
-
-    with setup_col2:
-        # Camera angle selection
-        angle_choice = st.radio(
-            "Camera angle",
-            ["FO (Face-On)", "DTL (Down-the-Line)"],
-            horizontal=True,
+    st.header("Settings")
+    with st.form("settings_form"):
+        export_folder = st.text_input(
+            "TrackMan export folder",
+            value=settings.export_folder,
+            help="Folder where you save 'Trackman CSV' exports from TPS. New files are imported automatically.",
+            placeholder=r"C:\Users\you\Documents\TrackMan Exports",
         )
-        angle = "FO" if angle_choice.startswith("FO") else "DTL"
-        st.session_state["angle"] = angle
-
-    # --- Angle-specific setup guidance ---
-    recs = get_recs(angle)
-    with st.expander(f"Setup Guide for {angle_choice}", expanded=True):
-        guide_col1, guide_col2 = st.columns(2)
-
-        with guide_col1:
-            st.markdown("**Camera Position:**")
-            st.write(f"- Height: {recs['height_ft'][0]}–{recs['height_ft'][1]} ft")
-            st.write(f"- Distance: {recs['distance_ft'][0]}–{recs['distance_ft'][1]} ft")
-
-        with guide_col2:
-            st.markdown("**Checklist:**")
-            st.write("✓ Full body in frame (head to feet)")
-            st.write("✓ Golfer centered in frame")
-            st.write("✓ Good lighting (no backlight)")
-            st.write("✓ Landscape orientation")
-            st.write("✓ 60 FPS if possible")
-
-        st.caption("**Tips:** " + " | ".join(recs["notes"][:2]))
-
-    st.divider()
-
-    # --- 1) Live Guided Capture ---
-    st.markdown("### Live Guided Capture")
-    st.caption("Real-time framing feedback. Green = ready, Orange = adjust position.")
-
-    # Create angle-aware processor
-    processor_factory = create_guide_processor(angle)
-
-    rtc_config = RTCConfiguration({
-        "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-    })
-
-    # Camera preference
-    camera_mode = st.radio(
-        "Camera",
-        ["Back camera", "Front camera"],
-        horizontal=True,
-        help="Back camera recommended. Use front if back doesn't work."
-    )
-    facing_mode = "environment" if camera_mode == "Back camera" else "user"
-
-    ctx = webrtc_streamer(
-        key=f"live-guide-{angle}-{facing_mode}",  # Key changes with angle/camera
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=rtc_config,
-        media_stream_constraints={
-            "video": {"facingMode": {"ideal": facing_mode}},
-            "audio": False,
-        },
-        video_processor_factory=processor_factory,
-        async_processing=True,
-    )
-
-    # Status feedback
-    if ctx and ctx.state.playing:
-        st.success("Camera streaming. Position yourself until the banner turns GREEN.")
-    else:
-        st.warning("Camera not streaming yet. See troubleshooting below if this persists.")
-
-        # Troubleshooting expander
-        with st.expander("Camera Troubleshooting"):
-            st.markdown("""
-            **Common Issues:**
-
-            **iOS Safari:**
-            1. Tap the "Aa" in address bar → Website Settings → Allow Camera
-            2. Refresh the page after granting permission
-            3. Only works over HTTPS (automatic on Streamlit Cloud)
-
-            **Android Chrome:**
-            1. Tap the lock icon in address bar → Permissions → Camera → Allow
-            2. If "Back camera" doesn't work, try "Front camera"
-
-            **Desktop:**
-            1. Click the camera icon in the address bar
-            2. Select "Allow" for camera access
-            3. May need to refresh after granting permission
-
-            **Still not working?**
-            - Try a different browser (Chrome works best)
-            - Use the Photo Fallback or Quick Upload below
-            """)
+        handedness = st.radio("Handedness", ["right", "left"], index=0 if settings.handedness == "right" else 1, horizontal=True)
+        target_score = st.number_input("Target score (18 holes)", min_value=70, max_value=110, value=int(settings.target_score), step=1)
+        recent_days = st.select_slider("Use shots from the last", options=[14, 30, 45, 60, 90, 180, 365], value=int(settings.recent_days), format_func=lambda d: f"{d} days")
+        min_shots = st.number_input("Min shots per club for the card", min_value=1, max_value=30, value=int(settings.min_shots_per_club))
+        auto_scan = st.checkbox("Auto-import new exports on load", value=bool(settings.auto_scan))
+        flip_side = st.checkbox("Flip left/right sign", value=bool(settings.flip_side_sign), help="Tick if the Miss direction on your card looks backwards.")
+        saved = st.form_submit_button("Save settings")
+    if saved:
+        settings = Settings(
+            export_folder=export_folder.strip(),
+            handedness=handedness,
+            target_score=int(target_score),
+            recent_days=int(recent_days),
+            min_shots_per_club=int(min_shots),
+            auto_scan=bool(auto_scan),
+            flip_side_sign=bool(flip_side),
+            player_name=settings.player_name,
+        )
+        settings_store.save(settings)
+        st.success("Saved.")
+        st.rerun()
 
     st.divider()
+    scan_clicked = st.button("Scan export folder now")
+    st.caption(f"Data folder: `{shot_store.data_dir}`")
 
-    # --- 2) Quick Upload ---
-    st.markdown("### Quick Upload")
-    st.caption("Already have a video? Upload it here.")
 
-    up = st.file_uploader("Upload a swing video", type=["mp4", "mov", "avi"], key="quick_upload")
-    if up:
-        st.session_state["uploaded_video"] = up
-        st.video(up)
-        st.success("Uploaded. Go to the **Analyze** tab to process it.")
-
-    st.divider()
-
-    # --- 3) Photo Framing Fallback ---
-    with st.expander("Photo Framing Fallback"):
-        st.caption("If live preview doesn't work, check your framing with a photo, then record with your native camera app.")
-
-        photo = st.camera_input("Take a test photo")
-        if photo:
-            from PIL import Image
-            img = Image.open(photo)
-            st.image(draw_overlay_grid(img), caption="Framing check - adjust until centered in guides")
-
-# =========================
-# Analyze Tab
-# =========================
-with tab_analyze:
-    club = st.session_state.get("club", "Driver")
-    angle = st.session_state.get("angle", "FO")
-
-    st.subheader("Analyze")
-
-    # Summary card
-    col1, col2 = st.columns(2)
-    col1.markdown(f"**Club:** {club}")
-    col2.markdown(f"**Angle:** {angle}")
-
-    # Video source (from Capture or upload here)
-    video = st.session_state.get("uploaded_video")
-    alt_upload = st.file_uploader("Or upload here", type=["mp4", "mov", "avi"], key="analyze_upload")
-    if alt_upload:
-        video = alt_upload
-        st.session_state["uploaded_video"] = alt_upload
-
-    if video:
-        st.video(video)
-    else:
-        st.warning("No video detected. Use the Capture tab to record or upload a clip.")
-
-    st.divider()
-
-    # Handedness selection
-    hand_col1, hand_col2 = st.columns([3, 1])
-    with hand_col2:
-        handedness = st.selectbox("Handedness", ["Right", "Left"], index=0)
-        st.session_state["handedness"] = handedness.lower()
-
-    analyze_now = st.button("Analyze Video", type="primary", use_container_width=True)
-
-    # Analysis state
-    metrics = None
-    keyframes = {}
-    confidence = "low"
-    analysis_error = None
-
-    if analyze_now and video:
-        if VIDEO_ANALYSIS_AVAILABLE:
-            with st.spinner("Analyzing swing with AI pose detection..."):
-                try:
-                    # Reset video file position
-                    video.seek(0)
-
-                    # Run real video analysis
-                    result = analyze_swing_video(
-                        video_file=video,
-                        angle=angle,
-                        handedness=st.session_state.get("handedness", "right"),
-                        target_fps=15.0
-                    )
-
-                    if result.success:
-                        metrics = result.to_metrics_dict()
-                        keyframes = result.keyframes
-                        confidence = result.overall_confidence
-
-                        # Store in session state
-                        st.session_state["last_metrics"] = metrics
-                        st.session_state["last_keyframes"] = keyframes
-                        st.session_state["last_confidence"] = confidence
-                        st.session_state["analysis_info"] = {
-                            "frames_processed": result.frames_processed,
-                            "frames_with_pose": result.frames_with_pose,
-                            "duration_sec": result.duration_sec,
-                            "fps": result.fps,
-                        }
-                    else:
-                        analysis_error = result.error_message
-
-                except Exception as e:
-                    analysis_error = f"Analysis error: {str(e)}"
+def run_scan(folder: str, announce: bool = True):
+    if not folder:
+        if announce:
+            st.sidebar.warning("Set the export folder first.")
+        return
+    results = shot_store.scan_folder(folder)
+    st.session_state["last_scan"] = {
+        "at": datetime.now(),
+        "results": [(r.source, r.status, r.added, r.warnings) for r in results],
+    }
+    added = sum(r.added for r in results if r.ok)
+    errors = [r for r in results if r.status == "error"]
+    if announce:
+        if errors:
+            st.sidebar.error(errors[0].warnings[0] if errors[0].warnings else "Scan failed.")
+        elif added:
+            st.sidebar.success(f"Imported {added} new shots from {sum(1 for r in results if r.ok)} file(s).")
+        elif results:
+            st.sidebar.info("Files found but no new shots.")
         else:
-            # Fallback to placeholder metrics if video analysis not available
-            st.warning("Video analysis module not available. Showing placeholder data.")
-            metrics = {
-                "tempo_ratio": 3.1,
-                "head_sway_cm": 5.2,
-                "hip_rotation_deg_top": 38,
-                "shoulder_rotation_deg_top": 82,
-                "lead_wrist_set_deg_top": 60,
-                "pelvis_slide_cm": 4.5,
-            }
-            confidence = "low"
-            st.session_state["last_metrics"] = metrics
-            st.session_state["last_confidence"] = confidence
+            st.sidebar.info("No new export files.")
 
-    # Show error if analysis failed
-    if analysis_error:
-        st.error(analysis_error)
-        with st.expander("Tips for better analysis"):
-            st.markdown("""
-            - **Full body visible**: Ensure your entire body is in frame from head to feet
-            - **Good lighting**: Avoid strong backlight; even indoor lighting works
-            - **Steady camera**: Use a tripod or stable surface
-            - **Complete swing**: Include address through finish in the video
-            - **Appropriate clothing**: Avoid very baggy clothes that obscure body shape
-            - **Video length**: Keep videos under 20 seconds
-            """)
 
-    # Show metrics if available (from current or previous analysis)
-    if metrics is None and "last_metrics" in st.session_state:
-        metrics = st.session_state.get("last_metrics")
-        keyframes = st.session_state.get("last_keyframes", {})
-        confidence = st.session_state.get("last_confidence", "low")
+if scan_clicked:
+    run_scan(settings.export_folder, announce=True)
+elif settings.auto_scan and settings.export_folder:
+    last = st.session_state.get("last_scan", {}).get("at")
+    if last is None or (datetime.now() - last).total_seconds() > 120:
+        run_scan(settings.export_folder, announce=False)
 
-    if metrics:
-        # Get club-specific goals
-        goals = get_goals_for_club(club)
 
-        # Confidence indicator
-        confidence_colors = {"high": "🟢", "medium": "🟡", "low": "🔴"}
-        st.caption(f"{confidence_colors.get(confidence, '⚪')} Detection confidence: **{confidence}**")
+# ---------------------------------------------------------------------------
+# Load + prepare data (small enough to do on every run)
+# ---------------------------------------------------------------------------
 
-        if confidence == "low":
-            st.warning("Low confidence detection. Results may be less accurate. See tips above.")
+raw_shots = shot_store.load_shots()
+all_shots = filter_valid(prepare_shots(raw_shots, settings.handedness, settings.flip_side_sign))
+recent = recent_shots(all_shots, settings.recent_days)
+summary = club_summary(recent, min_shots=settings.min_shots_per_club)
+summary_any = club_summary(recent, min_shots=1)
+rounds = round_store.load()
+rounds_agg = aggregate_rounds(rounds)
 
-        # Keyframe images
-        if keyframes:
-            st.subheader("Key Positions")
-            kf_cols = st.columns(len(keyframes))
-            for i, (phase, img) in enumerate(keyframes.items()):
-                with kf_cols[i]:
-                    st.image(img, caption=phase.capitalize(), use_container_width=True)
+shot_pointers = evaluate_shots(recent, settings.handedness, min_shots=max(8, settings.min_shots_per_club))
+round_pointers = evaluate_rounds(rounds_agg, settings.target_score)
+priorities = top_priorities(shot_pointers, round_pointers, k=3)
 
-        # Metrics display
-        st.subheader("Metrics")
+has_shots = not all_shots.empty
+has_rounds = len(rounds) > 0
 
-        # Show estimated label for metrics
-        st.caption("*Metrics are estimated from video pose detection and may vary from professional launch monitors.*")
+st.title("⛳ Golf Coach")
+st.caption("TrackMan sessions + your rounds → what to practise this week.")
 
-        c1, c2, c3, c4 = st.columns(4)
+tab_import, tab_numbers, tab_coach, tab_plan, tab_rounds, tab_progress = st.tabs(
+    ["Import", "My Numbers", "Coach", "Plan", "Rounds", "Progress"]
+)
 
-        tempo = metrics.get('tempo_ratio')
-        c1.metric(
-            "Tempo (B:D)",
-            f"{tempo}" if tempo else "N/A",
-            help="Backswing:Downswing frame ratio. Tour avg: 3.0"
-        )
 
-        sway = metrics.get('head_sway_cm')
-        c2.metric(
-            "Head sway",
-            f"{sway} cm" if sway else "N/A",
-            help="Horizontal head movement from address to top"
-        )
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-        hip = metrics.get('hip_rotation_deg_top')
-        c3.metric(
-            "Hip rot @Top",
-            f"{hip}°" if hip else "N/A",
-            help="Hip line angle at top of backswing"
-        )
+def fmt(v, digits=1, suffix=""):
+    try:
+        if v is None or pd.isna(v):
+            return "-"
+        return f"{float(v):.{digits}f}{suffix}"
+    except (TypeError, ValueError):
+        return "-"
 
-        shoulder = metrics.get('shoulder_rotation_deg_top')
-        c4.metric(
-            "Shoulder rot @Top",
-            f"{shoulder}°" if shoulder else "N/A",
-            help="Shoulder line angle at top of backswing"
-        )
 
-        # Additional metrics row
-        c5, c6, c7, c8 = st.columns(4)
-
-        wrist = metrics.get('lead_wrist_set_deg_top')
-        c5.metric(
-            "Lead wrist",
-            f"{wrist}°" if wrist else "N/A",
-            help="Lead arm bend at top (wrist hinge estimate)"
-        )
-
-        pelvis = metrics.get('pelvis_slide_cm')
-        c6.metric(
-            "Pelvis slide",
-            f"{pelvis} cm" if pelvis else "N/A",
-            help="Hip center lateral movement"
-        )
-
-        # Analysis info
-        if "analysis_info" in st.session_state:
-            info = st.session_state["analysis_info"]
-            c7.metric("Frames", f"{info.get('frames_with_pose', 0)}/{info.get('frames_processed', 0)}")
-            c8.metric("Duration", f"{info.get('duration_sec', 0):.1f}s")
-
-        # Load drills for pointer-specific recommendations
-        drills = load_drills()
-
-        # Get detailed pointers from rules engine
-        detailed_pointers = analyze_with_goals_detailed(metrics, goals, confidence)
-
-        # Also get simple format for backward compatibility (report, etc.)
-        pointers, tags = analyze_with_goals(metrics, goals, confidence)
-
-        st.subheader("Coaching Pointers")
-
-        if confidence == "low":
-            st.caption("*Lower confidence detection - take these suggestions with a grain of salt.*")
-
-        if not detailed_pointers:
-            st.success("Swing fundamentals look solid. Keep practicing for consistency!")
-        else:
-            # Priority labels
-            priority_icons = {1: "🔴", 2: "🟠", 3: "🟡", 4: "🟢", 5: "⚪"}
-
-            for pointer in detailed_pointers:
-                icon = priority_icons.get(pointer.priority, "⚪")
-
-                with st.expander(f"{icon} {pointer.message}", expanded=(pointer.priority <= 2)):
-                    # Why it matters
-                    st.markdown(f"**Why it matters:** {pointer.why}")
-
-                    # Confidence label
-                    if pointer.confidence == "low":
-                        st.caption("⚠️ *Low confidence - verify with additional video*")
-
-                    # Associated drills
-                    pointer_drills = get_pointer_drills(pointer, drills) if drills else []
-                    if pointer_drills:
-                        st.markdown("**Recommended drills:**")
-                        for d in pointer_drills[:3]:  # Show top 3 drills
-                            st.markdown(f"- **{d['name']}** ({d.get('difficulty', 'all levels')})")
-                            if d.get("why"):
-                                st.caption(f"  {d['why']}")
-
-        # Show all suggested drills section
-        if drills:
-            drill_tags = map_tags_to_drill_tags(tags)
-            all_suggestions = tag_to_drills(drill_tags, drills)
-
-            if all_suggestions:
-                st.subheader("All Suggested Drills")
-                st.caption("Drills to address the issues identified above")
-
-                for d in all_suggestions:
-                    with st.expander(f"🏌️ {d['name']} ({d.get('difficulty', 'all levels')})"):
-                        if d.get("why"):
-                            st.markdown(f"**Why:** {d['why']}")
-                        if d.get("equipment"):
-                            equip = d['equipment']
-                            equip_str = ', '.join(equip) if equip else 'None needed'
-                            st.write(f"**Equipment:** {equip_str}")
-                        st.write("**Steps:**")
+def pointer_card(p, show_drills=True, key_prefix="p"):
+    icon = PRIORITY_ICON.get(p.priority, "⚪")
+    with st.container(border=True):
+        st.markdown(f"**{icon} {p.message}**")
+        st.write(p.why)
+        cols = st.columns(3)
+        cols[0].markdown(f"**Measured:** {fmt(p.measured_value)}")
+        cols[1].markdown(f"**Target:** {p.target_text or fmt(p.target_value)}")
+        cols[2].markdown(f"**Confidence:** {CONF_ICON.get(p.confidence, '')} ({p.n} {'shots' if p.source == 'shots' else 'rounds'})")
+        if p.success_criterion:
+            st.markdown(f"✅ **You'll know it's fixed when:** {p.success_criterion}")
+        if show_drills:
+            drills = get_pointer_drills(p, DRILLS, limit=3)
+            if drills:
+                st.markdown("**Drills:**")
+                for d in drills:
+                    where = d.get("where", "sim")
+                    with st.expander(f"{d['name']}  ·  {where}  ·  {d.get('difficulty', '')}"):
                         for i, step in enumerate(d.get("steps", []), start=1):
                             st.write(f"{i}. {step}")
-        else:
-            st.warning("Drills database not found.")
+                        if d.get("why"):
+                            st.caption(f"Why: {d['why']}")
+                        if d.get("trackman_watch"):
+                            st.caption(f"Watch on TrackMan: {d['trackman_watch']}")
 
-        # Save and Download section
-        st.divider()
 
-        save_col1, save_col2 = st.columns(2)
+# ---------------------------------------------------------------------------
+# Import tab
+# ---------------------------------------------------------------------------
 
-        with save_col1:
-            # Save Session button
-            if st.button("Save to Progress", type="secondary", use_container_width=True):
-                store = get_session_store()
-                session = Session.create(
-                    club=club,
-                    angle=angle,
-                    metrics=metrics,
-                    confidence=confidence,
-                    pointers=pointers,
-                    video_name=getattr(video, "name", "clip") if video else "",
-                )
-                if store.save_session(session):
-                    st.success("Session saved! View in Progress tab.")
-                    st.session_state["last_saved_session"] = session.id
+with tab_import:
+    if not has_shots:
+        st.info("**Start here.** Export a session from TrackMan Performance Studio and drop it below, or set the export folder in the sidebar so new exports import themselves.")
+
+    left, right = st.columns([3, 2])
+    with left:
+        st.subheader("Upload TrackMan CSV exports")
+        uploads = st.file_uploader("Drop one or more 'Trackman CSV' files", type=["csv", "txt"], accept_multiple_files=True)
+        processed = st.session_state.setdefault("processed_uploads", set())
+        messages = st.session_state.setdefault("upload_messages", [])
+        new_uploads = [u for u in (uploads or []) if (u.name, u.size) not in processed]
+        if new_uploads:
+            for up in new_uploads:
+                res = shot_store.ingest_bytes(up.getvalue(), up.name)
+                processed.add((up.name, up.size))
+                if res.ok:
+                    messages.append(("success", f"{up.name}: imported {res.added} shots" + (f", {res.skipped_duplicates} duplicates skipped" if res.skipped_duplicates else "")))
+                elif res.status == "duplicate_file":
+                    messages.append(("info", f"{up.name}: already imported."))
+                elif res.status == "no_new_shots":
+                    messages.append(("info", f"{up.name}: all shots were already in the database."))
                 else:
-                    st.error("Could not save session. Storage may be unavailable.")
+                    messages.append(("error", f"{up.name}: nothing imported. " + " ".join(res.warnings)))
+                for w in res.warnings:
+                    messages.append(("caption" if w.startswith("Ignored columns") else "warning", f"{up.name}: {w}"))
+            st.rerun()  # reload so every tab sees the new shots
+        for level, text in messages[-12:]:
+            getattr(st, level)(text)
+        if messages and st.button("Clear messages"):
+            st.session_state["upload_messages"] = []
+            st.rerun()
 
-        with save_col2:
-            # Coach Report download
-            st.download_button(
-                "Download Report (PDF)",
-                data=render_pdf({
-                    "club": club,
-                    "video_name": getattr(video, "name", "clip"),
-                    "metrics": metrics,
-                    "pointers": pointers,
-                }),
-                file_name="coach_report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+        last_scan = st.session_state.get("last_scan")
+        if last_scan and last_scan.get("results"):
+            st.subheader("Last folder scan")
+            for src, status, added, warns in last_scan["results"]:
+                if status == "added":
+                    st.write(f"✅ {src}: {added} new shots")
+                elif status == "error":
+                    st.write(f"❌ {src}: {' '.join(warns)}")
+                else:
+                    st.write(f"• {src}: {status.replace('_', ' ')}")
 
-# =========================
-# Progress Tab
-# =========================
-with tab_progress:
-    st.subheader("Progress Tracking")
+    with right:
+        st.subheader("How to export from TrackMan")
+        st.markdown(
+            """
+1. In **TrackMan Performance Studio**, open **Shot Analysis** (the practice/range screen, not Virtual Golf).
+2. Load the session (today's, or one from the **Shot Library**).
+3. Click the **View Selector** at the top and choose **Table View**.
+4. Open the **File Options** menu (top right of the table) and choose **Trackman CSV**.
+5. Save it into the folder you set in the sidebar. Done: the app imports it on the next load.
 
-    # Get session store
-    store = get_session_store()
-
-    # Ephemeral storage warning
-    if store.is_ephemeral:
-        st.warning(
-            "Note: Session data is stored temporarily and may be lost when the app restarts. "
-            "Use 'Export Sessions' below to save your data."
+*The export only exists in TPS on the simulator PC and needs an active TrackMan software subscription. Tag the club in TPS before each set so the file carries club names.*
+            """
         )
 
-    # Load sessions
-    sessions = store.load_sessions(limit=100)
-
-    if not sessions:
-        st.info("No sessions recorded yet. Analyze a swing and click 'Save to Progress' to start tracking.")
+    st.divider()
+    st.subheader("Imported sessions")
+    sessions = shot_store.sessions()
+    if sessions.empty:
+        st.caption("No sessions yet.")
     else:
-        # Filters
-        filter_col1, filter_col2 = st.columns(2)
+        show = sessions.copy()
+        show["date"] = pd.to_datetime(show["date"]).dt.strftime("%Y-%m-%d %H:%M")
+        st.dataframe(show[["date", "source_file", "shots", "clubs"]], hide_index=True)
+        c1, c2 = st.columns([3, 1])
+        choice = c1.selectbox("Remove a session", options=["-"] + [f"{r.date} · {r.source_file} ({r.session_id})" for r in show.itertuples()], key="del_session")
+        if c2.button("Delete", disabled=(choice == "-")):
+            sid = choice.rsplit("(", 1)[-1].rstrip(")")
+            removed = shot_store.delete_session(sid)
+            st.success(f"Removed {removed} shots.")
+            st.rerun()
 
-        with filter_col1:
-            clubs = ["All"] + list(set(s.club for s in sessions))
-            filter_club = st.selectbox("Filter by Club", clubs, key="filter_club")
 
-        with filter_col2:
-            angles = ["All"] + list(set(s.angle for s in sessions))
-            filter_angle = st.selectbox("Filter by Angle", angles, key="filter_angle")
+# ---------------------------------------------------------------------------
+# My Numbers tab
+# ---------------------------------------------------------------------------
 
-        # Apply filters
-        filtered = sessions
-        if filter_club != "All":
-            filtered = [s for s in filtered if s.club == filter_club]
-        if filter_angle != "All":
-            filtered = [s for s in filtered if s.angle == filter_angle]
+with tab_numbers:
+    if summary.empty:
+        st.info(f"Need at least {settings.min_shots_per_club} shots per club in the last {settings.recent_days} days. Import a session or lower the minimum in the sidebar.")
+    else:
+        st.subheader("Yardage card")
+        st.caption(f"Last {settings.recent_days} days · {int(recent.shape[0])} shots · Safe = 20th percentile carry, Plan = median, Max = 80th percentile, ± = one-sigma side spread")
+        card = yardage_card(summary, settings.handedness)
+        st.dataframe(card, hide_index=True)
+        png = render_yardage_card(card, title="My Numbers", subtitle=f"Last {settings.recent_days} days · {date.today().isoformat()}", handedness=settings.handedness)
+        st.download_button("Download yardage card (PNG for your phone)", data=png, file_name="yardage_card.png", mime="image/png")
 
-        st.caption(f"Showing {len(filtered)} of {len(sessions)} sessions")
+        gaps = bag_gaps(summary)
+        if not gaps.empty:
+            st.subheader("Bag gapping")
+            problems = gaps[gaps["status"] != "ok"]
+            if problems.empty:
+                st.success("Carry gaps between clubs look sensible (6-18 yards).")
+            else:
+                for r in problems.itertuples():
+                    if r.status == "overlap":
+                        st.warning(f"**{r.from_club} → {r.to_club}: only {r.gap_yds:.0f} yds apart.** One of these clubs is redundant or being struck poorly. Check smash factor and consider a loft adjustment.")
+                    else:
+                        st.warning(f"**{r.from_club} → {r.to_club}: {r.gap_yds:.0f} yd hole in the bag.** Learn a three-quarter {r.from_club} or add a club in between.")
+            with st.expander("All gaps"):
+                st.dataframe(gaps, hide_index=True)
 
-        # Trend charts
-        if len(filtered) >= 2:
-            st.subheader("Trends")
+        st.subheader("Club detail")
+        clubs = sorted(summary_any.index.tolist(), key=club_sort_key)
+        club = st.selectbox("Club", clubs, key="numbers_club")
+        sub = recent[recent["club"] == club]
+        row = summary_any.loc[club]
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("Shots", int(row["shots"]))
+        m2.metric("Carry (median)", fmt(row.get("carry_med"), 0, " yds"))
+        m3.metric("Carry spread ±", fmt(row.get("carry_std"), 0, " yds"))
+        m4.metric("Side spread ±", fmt(row.get("side_std"), 0, " yds"))
+        m5.metric("Smash", fmt(row.get("smash_mean"), 2))
+        m6.metric("Consistency", fmt(row.get("consistency"), 0, "/100"))
+        d1, d2, d3, d4, d5, d6 = st.columns(6)
+        d1.metric("Club speed", fmt(row.get("club_speed_mean"), 0, " mph"))
+        d2.metric("Ball speed", fmt(row.get("ball_speed_mean"), 0, " mph"))
+        d3.metric("Launch", fmt(row.get("launch_mean"), 1, "°"))
+        d4.metric("Spin", fmt(row.get("spin_mean"), 0, " rpm"))
+        d5.metric("Attack", fmt(row.get("attack_mean"), 1, "°"))
+        d6.metric("Face to path", fmt(row.get("ftp_mean"), 1, "°"))
 
-            # Prepare data for charts
-            import datetime
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            if {"side_yds", "carry_yds"} <= set(sub.columns) and sub["side_yds"].notna().any():
+                st.markdown("**Dispersion** (x = offline yards, + is your fade side; y = carry)")
+                plot = sub[["side_yds", "carry_yds"]].dropna().rename(columns={"side_yds": "Offline (yds)", "carry_yds": "Carry (yds)"})
+                st.scatter_chart(plot, x="Offline (yds)", y="Carry (yds)")
+            else:
+                st.caption("No offline data in this export for a dispersion plot.")
+        with c2:
+            pattern = miss_pattern(sub)
+            if not pattern.empty:
+                st.markdown("**Shot shapes**")
+                st.bar_chart(pattern.set_index("label")["pct"])
+            sq = strike_quality(sub, club)
+            if sq.get("n"):
+                st.caption(f"Solid strikes: {sq['pct_solid']:.0f}% of shots at or near smash {sq['expected']:.2f}")
 
-            chart_data = []
-            for s in reversed(filtered):  # Oldest first for charts
-                try:
-                    dt = datetime.datetime.fromisoformat(s.timestamp)
-                    date_str = dt.strftime("%m/%d")
-                except Exception:
-                    date_str = s.timestamp[:10]
 
-                chart_data.append({
-                    "date": date_str,
-                    "tempo": s.metrics.get("tempo_ratio"),
-                    "head_sway": s.metrics.get("head_sway_cm"),
-                    "hip_rotation": s.metrics.get("hip_rotation_deg_top"),
-                    "shoulder_rotation": s.metrics.get("shoulder_rotation_deg_top"),
-                })
+# ---------------------------------------------------------------------------
+# Coach tab
+# ---------------------------------------------------------------------------
 
-            # Tempo chart
-            tempo_data = [(d["date"], d["tempo"]) for d in chart_data if d["tempo"] is not None]
-            if len(tempo_data) >= 2:
-                st.markdown("**Tempo Ratio Over Time**")
-                st.caption("Target: 2.5-3.5 (varies by club)")
-                chart_df = {"Date": [d[0] for d in tempo_data], "Tempo": [d[1] for d in tempo_data]}
-                st.line_chart(chart_df, x="Date", y="Tempo")
+with tab_coach:
+    if not has_shots and not has_rounds:
+        st.info("Import a TrackMan session (Import tab) and log a round or two (Rounds tab) to get coaching.")
+    else:
+        st.subheader("This week's priorities")
+        if not priorities:
+            st.success("Nothing outside the target windows with enough data. Keep building the sample: 8+ shots per club and 2+ rounds.")
+        for i, p in enumerate(priorities):
+            pointer_card(p, key_prefix=f"top{i}")
 
-            # Head sway chart
-            sway_data = [(d["date"], d["head_sway"]) for d in chart_data if d["head_sway"] is not None]
-            if len(sway_data) >= 2:
-                st.markdown("**Head Sway Over Time (cm)**")
-                st.caption("Lower is better. Target: <4cm for Driver")
-                chart_df = {"Date": [d[0] for d in sway_data], "Head Sway (cm)": [d[1] for d in sway_data]}
-                st.line_chart(chart_df, x="Date", y="Head Sway (cm)")
+        if has_rounds and rounds_agg.get("n_rounds"):
+            st.subheader(f"Where strokes go vs an {settings.target_score}-shooter")
+            sl = strokes_lost(rounds_agg, settings.target_score)
+            if not sl.empty:
+                show = sl.copy()
+                show["you"] = show["you"].map(lambda v: f"{v:.1f}")
+                show["benchmark"] = show["benchmark"].map(lambda v: f"{v:.1f}")
+                show = show.rename(columns={"category": "Category", "you": "You", "benchmark": "Benchmark", "est_strokes": "Est. strokes / round", "note": "Note"})
+                st.dataframe(show, hide_index=True)
+                st.caption(f"Based on your last {rounds_agg['n_rounds']} rounds. Benchmarks are approximate amateur averages; the ranking matters more than the decimals.")
 
-        # Session list
-        st.subheader("Recent Sessions")
+        if shot_pointers:
+            st.subheader("All findings by club")
+            by_club = {}
+            for p in shot_pointers:
+                by_club.setdefault(p.club, []).append(p)
+            for club in sorted(by_club, key=club_sort_key):
+                ps = by_club[club]
+                worst = min(p.priority for p in ps)
+                with st.expander(f"{PRIORITY_ICON.get(worst, '⚪')} {club} · {len(ps)} finding(s)"):
+                    for j, p in enumerate(ps):
+                        pointer_card(p, key_prefix=f"{club}{j}")
+        elif has_shots:
+            st.caption("No per-club findings yet: clubs need 8+ shots in the window to be evaluated.")
 
-        for s in filtered[:20]:  # Show last 20
-            try:
-                dt = datetime.datetime.fromisoformat(s.timestamp)
-                date_str = dt.strftime("%b %d, %Y %H:%M")
-            except Exception:
-                date_str = s.timestamp
+        if has_shots and GAMES:
+            st.subheader("Scored games")
+            st.caption("Scores are computed from the last 10 shots of the chosen club in your most recent session that used it.")
+            gcol1, gcol2 = st.columns(2)
+            game_names = [g["name"] for g in GAMES]
+            game_name = gcol1.selectbox("Game", game_names, key="game_pick")
+            game = next(g for g in GAMES if g["name"] == game_name)
+            eligible = [c for c in sorted(all_shots["club"].unique().tolist(), key=club_sort_key) if game_applies_to_club(game, c)]
+            if eligible:
+                gclub = gcol2.selectbox("Club", eligible, key="game_club")
+                latest_session = all_shots[all_shots["club"] == gclub].sort_values("date")["session_id"].iloc[-1]
+                sess_shots = all_shots[all_shots["session_id"] == latest_session]
+                res = score_game(game, sess_shots, gclub)
+                st.markdown(f"**{game['name']} with {gclub}: {res['points']} / {res['max_points']}**" + ("" if res["ready"] else f"  (only {res['shots_used']} shots in that session)"))
+                st.caption(game.get("description", ""))
+                if not res["detail"].empty:
+                    st.dataframe(res["detail"], hide_index=True)
+            else:
+                st.caption("No shots with a club this game applies to.")
 
-            # Confidence badge
-            conf_badge = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(s.confidence, "⚪")
 
-            with st.expander(f"{conf_badge} {date_str} - {s.club} ({s.angle})"):
-                # Metrics
-                m = s.metrics
-                met_col1, met_col2, met_col3, met_col4 = st.columns(4)
-                met_col1.metric("Tempo", m.get("tempo_ratio", "N/A"))
-                met_col2.metric("Head Sway", f"{m.get('head_sway_cm', 'N/A')} cm" if m.get('head_sway_cm') else "N/A")
-                met_col3.metric("Hip Rot", f"{m.get('hip_rotation_deg_top', 'N/A')}°" if m.get('hip_rotation_deg_top') else "N/A")
-                met_col4.metric("Shoulder Rot", f"{m.get('shoulder_rotation_deg_top', 'N/A')}°" if m.get('shoulder_rotation_deg_top') else "N/A")
+# ---------------------------------------------------------------------------
+# Plan tab
+# ---------------------------------------------------------------------------
 
-                # Pointers summary
-                if s.pointers_summary:
-                    st.markdown("**Key feedback:**")
-                    for p in s.pointers_summary[:3]:
-                        st.write(f"• {p}")
+with tab_plan:
+    st.subheader("Weekly practice plan")
+    latest_plan = plan_store.latest()
+    c1, c2 = st.columns([1, 3])
+    if c1.button("Generate this week's plan", type="primary", disabled=not (has_shots or has_rounds)):
+        plan = build_weekly_plan(priorities, summary, DRILLS, GAMES, settings.handedness)
+        plan_store.save(plan)
+        st.rerun()
+    if latest_plan is None:
+        c2.info("No plan yet. Import at least one session, then generate a plan.")
+    else:
+        c2.caption(f"Week of {latest_plan.week_of} · generated {latest_plan.created_at[:16].replace('T', ' ')}")
+        st.markdown("**Focus:** " + " · ".join(latest_plan.focus))
+        st.markdown(f"**On the course this week:** {latest_plan.on_course_rule}")
+        for s in latest_plan.sessions:
+            with st.container(border=True):
+                st.markdown(f"### {s.title}  ·  ~{s.minutes} min")
+                st.caption(f"Focus: {s.focus}")
+                for b in s.blocks:
+                    kind_icon = {"warmup": "🔥", "drill": "🎯", "game": "🎮", "gapping": "📏", "home": "🏠", "course": "⛳"}.get(b.kind, "•")
+                    with st.expander(f"{kind_icon} {b.name}  ·  {b.minutes} min  ·  {b.reps}", expanded=(b.kind in ("drill", "game"))):
+                        for i, step in enumerate(b.instructions, start=1):
+                            st.write(f"{i}. {step}")
+                        if b.success_metric:
+                            st.markdown(f"✅ **Pass mark:** {b.success_metric}")
+                        if b.trackman_watch:
+                            st.caption(f"Watch on TrackMan: {b.trackman_watch}")
+        if latest_plan.checks:
+            st.subheader("Plan checks (live)")
+            for chk in latest_plan.checks:
+                r = evaluate_check(chk, summary_any, rounds_agg)
+                status = "✅" if r["ok"] else ("❌" if r["ok"] is False else "⏳")
+                val = fmt(r["value"], 2 if r["metric"] in ("smash_mean", "smash_std", "carry_cv") else 1)
+                st.write(f"{status} {r['label']} — now {val}, target {r['op']} {r['target']:.2f}" if r["metric"] in ("smash_mean", "smash_std", "carry_cv") else f"{status} {r['label']} — now {val}, target {r['op']} {r['target']:.1f}")
 
-        # Export section
-        st.divider()
-        st.subheader("Data Management")
 
-        export_col1, export_col2 = st.columns(2)
+# ---------------------------------------------------------------------------
+# Rounds tab
+# ---------------------------------------------------------------------------
 
-        with export_col1:
-            # Export sessions
-            if sessions:
-                export_data = store.export_sessions_json()
-                st.download_button(
-                    "Export Sessions (JSON)",
-                    data=export_data,
-                    file_name="golf_sessions_export.json",
-                    mime="application/json",
-                    use_container_width=True,
-                )
+with tab_rounds:
+    st.subheader("Log a round")
+    st.caption("Two minutes after the round. Fairway: leave blank on par 3s. Up&down: only fill when you missed the green.")
+    with st.form("round_form"):
+        r1, r2, r3, r4 = st.columns([1, 2, 1, 1])
+        r_date = r1.date_input("Date", value=date.today())
+        r_course = r2.text_input("Course", value="")
+        r_tees = r3.text_input("Tees", value="")
+        r_holes = r4.selectbox("Holes", [18, 9], index=0)
+        default = pd.DataFrame({
+            "Hole": list(range(1, r_holes + 1)),
+            "Par": [4] * r_holes,
+            "Score": [4] * r_holes,
+            "Putts": [2] * r_holes,
+            "Fairway": ["-"] * r_holes,
+            "GIR": ["-"] * r_holes,
+            "Penalties": [0] * r_holes,
+            "Up&Down": ["-"] * r_holes,
+        })
+        edited = st.data_editor(
+            default,
+            hide_index=True,
+            num_rows="fixed",
+            column_config={
+                "Hole": st.column_config.NumberColumn(disabled=True),
+                "Par": st.column_config.NumberColumn(min_value=3, max_value=6, step=1),
+                "Score": st.column_config.NumberColumn(min_value=1, max_value=15, step=1),
+                "Putts": st.column_config.NumberColumn(min_value=0, max_value=8, step=1),
+                "Fairway": st.column_config.SelectboxColumn(options=["-", "Yes", "No"], required=True),
+                "GIR": st.column_config.SelectboxColumn(options=["-", "Yes", "No"], required=True),
+                "Penalties": st.column_config.NumberColumn(min_value=0, max_value=5, step=1),
+                "Up&Down": st.column_config.SelectboxColumn(options=["-", "Yes", "No"], required=True),
+            },
+            key="round_editor",
+        )
+        submitted = st.form_submit_button("Save round", type="primary")
+    if submitted:
+        def yn(v):
+            return True if v == "Yes" else (False if v == "No" else None)
+        holes = []
+        for _, r in edited.iterrows():
+            holes.append(HoleResult(
+                hole=int(r["Hole"]), par=int(r["Par"]), score=int(r["Score"]),
+                putts=None if pd.isna(r["Putts"]) else int(r["Putts"]),
+                fir=yn(r["Fairway"]), gir=yn(r["GIR"]),
+                penalties=0 if pd.isna(r["Penalties"]) else int(r["Penalties"]),
+                up_and_down=yn(r["Up&Down"]),
+            ))
+        rnd = Round.create(date=r_date.isoformat(), course=r_course.strip() or "Unknown course", tees=r_tees.strip(), holes=holes)
+        if round_store.save(rnd):
+            st.success(f"Saved: {rnd.total} ({rnd.to_par:+d}) with {rnd.putts} putts, {rnd.penalties} penalties.")
+            st.rerun()
+        else:
+            st.error("Could not save the round.")
 
-        with export_col2:
-            # Clear sessions (with confirmation)
-            if st.button("Clear All Sessions", type="secondary", use_container_width=True):
-                st.session_state["confirm_clear"] = True
+    with st.expander("Import rounds from a CSV (Golfity, Golf Pad, or your own spreadsheet)"):
+        st.caption("One row per hole with columns like date, course, hole, par, score, putts, fairway, gir, penalties.")
+        rup = st.file_uploader("Rounds CSV", type=["csv"], key="rounds_upload")
+        if rup:
+            imported, warns = parse_rounds_csv(rup.getvalue(), rup.name)
+            for w in warns:
+                st.warning(w)
+            if imported:
+                added = round_store.save_many(imported)
+                st.success(f"Imported {len(imported)} round(s), {added} new.")
+                st.rerun()
 
-            if st.session_state.get("confirm_clear"):
-                st.warning("Are you sure? This cannot be undone.")
-                confirm_col1, confirm_col2 = st.columns(2)
-                with confirm_col1:
-                    if st.button("Yes, clear all", type="primary"):
-                        store.clear_sessions()
-                        st.session_state["confirm_clear"] = False
-                        st.rerun()
-                with confirm_col2:
-                    if st.button("Cancel"):
-                        st.session_state["confirm_clear"] = False
-                        st.rerun()
+    st.divider()
+    st.subheader("Your rounds")
+    if not rounds:
+        st.caption("No rounds logged yet.")
+    else:
+        rf = rounds_frame(rounds).sort_values("date", ascending=False)
+        show = pd.DataFrame({
+            "Date": rf["date"].dt.strftime("%Y-%m-%d"),
+            "Course": rf["course"],
+            "Score": rf["score"],
+            "To par": rf["to_par"].map(lambda v: f"{int(v):+d}"),
+            "Putts": rf["putts"],
+            "3-putts": rf["three_putts"],
+            "Penalties": rf["penalties"].round(0),
+            "FIR %": rf["fir_pct"].round(0),
+            "GIR %": rf["gir_pct"].round(0),
+            "Dbl+": rf["doubles_plus"].round(0),
+        })
+        st.dataframe(show, hide_index=True)
+        bench = benchmark_for(settings.target_score)
+        a = rounds_agg
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        k1.metric("Avg score", fmt(a.get("score"), 1), help=f"Target {settings.target_score}")
+        k2.metric("Putts", fmt(a.get("putts"), 1), delta=None if a.get("putts") is None else f"{a['putts'] - bench['putts']:+.1f} vs target", delta_color="inverse")
+        k3.metric("3-putts", fmt(a.get("three_putts"), 1), delta=None if a.get("three_putts") is None else f"{a['three_putts'] - bench['three_putts']:+.1f}", delta_color="inverse")
+        k4.metric("Penalties", fmt(a.get("penalties"), 1), delta=None if a.get("penalties") is None else f"{a['penalties'] - bench['penalties']:+.1f}", delta_color="inverse")
+        k5.metric("GIR %", fmt(a.get("gir_pct"), 0), delta=None if a.get("gir_pct") is None else f"{a['gir_pct'] - bench['gir_pct']:+.0f}")
+        k6.metric("FIR %", fmt(a.get("fir_pct"), 0), delta=None if a.get("fir_pct") is None else f"{a['fir_pct'] - bench['fir_pct']:+.0f}")
+        c1, c2 = st.columns([3, 1])
+        pick = c1.selectbox("Remove a round", ["-"] + [f"{r.date} · {r.course} · {r.total} ({r.id})" for r in rounds], key="del_round")
+        if c2.button("Delete round", disabled=(pick == "-")):
+            rid = pick.rsplit("(", 1)[-1].rstrip(")")
+            round_store.delete(rid)
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Progress tab
+# ---------------------------------------------------------------------------
+
+with tab_progress:
+    st.subheader("Progress")
+    if not has_shots and not has_rounds:
+        st.caption("Nothing to chart yet.")
+    if has_shots:
+        st.markdown("**Club trends by session**")
+        clubs = sorted(all_shots["club"].unique().tolist(), key=club_sort_key)
+        pc1, pc2 = st.columns(2)
+        tclub = pc1.selectbox("Club", clubs, key="trend_club")
+        metric_options = {
+            "Carry (median)": ("carry_yds", "median"),
+            "Carry spread ± (std)": ("carry_yds", "std"),
+            "Side spread ± (std)": ("side_yds", "std"),
+            "Face to path (mean)": ("face_to_path_deg", "mean"),
+            "Club path (mean)": ("club_path_deg", "mean"),
+            "Attack angle (mean)": ("attack_angle_deg", "mean"),
+            "Smash factor (mean)": ("smash_factor", "mean"),
+            "Ball speed (mean)": ("ball_speed_mph", "mean"),
+            "Spin (mean)": ("spin_rate_rpm", "mean"),
+        }
+        tmetric = pc2.selectbox("Metric", list(metric_options), key="trend_metric")
+        col, agg = metric_options[tmetric]
+        sub = all_shots[all_shots["club"] == tclub]
+        if col in sub.columns and sub[col].notna().any():
+            g = sub.groupby("session_id").agg(date=("date", "min"), value=(col, agg), shots=(col, "count")).sort_values("date")
+            g = g[g["shots"] >= 3]
+            if len(g) >= 2:
+                chart = g.set_index(g["date"].dt.strftime("%m-%d"))[["value"]].rename(columns={"value": tmetric})
+                st.line_chart(chart)
+            else:
+                st.caption("Need at least two sessions with 3+ shots of this club to draw a trend.")
+        else:
+            st.caption("That metric is not in your exports.")
+
+    if has_rounds:
+        st.markdown("**Scoring trends**")
+        rf = rounds_frame(rounds)
+        if len(rf) >= 2:
+            chart = rf.set_index(rf["date"].dt.strftime("%m-%d"))[["score18", "putts18", "penalties"]].rename(columns={"score18": "Score", "putts18": "Putts", "penalties": "Penalties"})
+            st.line_chart(chart)
+        else:
+            st.caption("Log a second round to see a scoring trend.")
+
+    plans = plan_store.load()
+    if plans:
+        st.markdown("**Plan checks**")
+        for plan in plans[:4]:
+            with st.expander(f"Week of {plan.week_of} · {' · '.join(plan.focus)}"):
+                if not plan.checks:
+                    st.caption("No measurable checks in this plan.")
+                for chk in plan.checks:
+                    r = evaluate_check(chk, summary_any, rounds_agg)
+                    status = "✅" if r["ok"] else ("❌" if r["ok"] is False else "⏳")
+                    st.write(f"{status} {r['label']} — now {fmt(r['value'], 2)} (target {r['op']} {r['target']:.2f})")
+
+    st.divider()
+    st.subheader("Data")
+    e1, e2, e3 = st.columns(3)
+    if has_shots:
+        e1.download_button("Export all shots (CSV)", data=shot_store.export_csv(), file_name="golf_shots.csv", mime="text/csv")
+    if has_rounds:
+        e2.download_button("Export rounds (JSON)", data=round_store.export_json(), file_name="golf_rounds.json", mime="application/json")
+    if e3.button("Clear ALL data"):
+        st.session_state["confirm_clear"] = True
+    if st.session_state.get("confirm_clear"):
+        st.warning("This deletes every imported shot, round and plan. Are you sure?")
+        y, n = st.columns(2)
+        if y.button("Yes, delete everything", type="primary"):
+            shot_store.clear()
+            round_store.clear()
+            plan_store.clear()
+            st.session_state["confirm_clear"] = False
+            st.rerun()
+        if n.button("Cancel"):
+            st.session_state["confirm_clear"] = False
+            st.rerun()

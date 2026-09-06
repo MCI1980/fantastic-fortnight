@@ -1,261 +1,128 @@
-# Golf Swing Coach — Streamlit App
+# Golf Coach
 
-A mobile-first golf swing coaching application built with Streamlit. Upload or capture swing videos, get AI-powered pose analysis, personalized coaching pointers, and drill recommendations.
+A personal practice-planning app for the 80s golfer with a TrackMan at home.
 
-## Features
+It reads your **TrackMan Performance Studio CSV exports** and your **rounds**, then tells you:
 
-- **Live Capture**: WebRTC camera streaming with real-time framing guides
-- **AI Video Analysis**: MediaPipe Pose detection for swing metrics
-- **Club-Aware Coaching**: Goals adjust by club (Driver → Wedge)
-- **Smart Drill Recommendations**: 15+ drills mapped to specific issues
-- **Progress Tracking**: Session history with trend charts
-- **Pro Integrations**: Architecture ready for TrackMan, Bushnell (coming soon)
+- **My Numbers** – a yardage card with *Safe / Plan / Max* carry per club, miss bias, dispersion and bag gaps
+- **Coach** – what is costing you strokes (face-to-path, path, attack angle, strike, distance control) and, from your rounds, where the strokes actually go (penalties, three-putts, blow-up holes) versus a target scoring level
+- **Plan** – a weekly plan of two or three simulator sessions with drills, scored games and pass marks you can verify on the next export
+- **Progress** – per-club trends by session, scoring trends and whether last week's plan checks passed
 
-## Quick Start
+No camera, no video, no cloud. Runs on the simulator PC; open it on your phone over Wi-Fi.
+
+## Quick start (simulator PC, Windows)
+
+1. Install Python 3.10+ from python.org (tick *Add to PATH*).
+2. Download or clone this repository into a folder, e.g. `C:\GolfCoach`.
+3. Double-click **`run_app.bat`**. The first run creates a virtual environment and installs dependencies.
+4. The window prints a **Network URL** like `http://192.168.1.23:8501`. Open it on your phone (same Wi-Fi) or on the PC.
+5. In the sidebar set the **TrackMan export folder** (see below), your handedness and target score. Save.
+
+Mac/Linux:
 
 ```bash
-# Clone and setup
-git clone <repo-url>
-cd golf-swing-coach
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run locally
-streamlit run streamlit_app.py
+streamlit run streamlit_app.py --server.address 0.0.0.0
 ```
 
-Open `http://localhost:8501` in your browser.
+### Reaching it away from home
 
-## Project Structure
+Install [Tailscale](https://tailscale.com) (free) on the PC and your phone; then the same URL works from anywhere. Or download the yardage card PNG from **My Numbers** and keep it on your phone.
+
+## Getting data in
+
+### TrackMan sessions (one click per session)
+
+In **TrackMan Performance Studio**:
+
+1. Open **Shot Analysis** (practice/range mode, not Virtual Golf) and load the session – today's, or one from the **Shot Library**.
+2. **View Selector → Table View**.
+3. **File Options → Trackman CSV**.
+4. Save into your export folder. The app imports new files automatically the next time it loads (or press *Scan export folder now* in the sidebar).
+
+Notes:
+
+- CSV export only exists in TPS on the simulator PC and needs an active software subscription. The TrackMan phone app and web portal only share reports.
+- **Tag the club in TPS before each set.** Without a club name the shots import as "Unknown" and are ignored by the analysis.
+- Re-exporting a session is safe: files and individual shots are de-duplicated.
+- The importer handles comma/semicolon files, a units row, km/h and metres, `5.2 R` / `L 3.1` side values, and drops the *Average / Std Dev* rows.
+
+You can also drag files onto the **Import** tab.
+
+### Rounds
+
+Either:
+
+- **Log it in the Rounds tab** (two minutes: score, putts, fairway, green, penalties per hole), or
+- **Import a hole-by-hole CSV** from a scoring app that exports one – [Golfity](https://golfity.com) (free, exports rounds/holes/shots) or Golf Pad (comprehensive export needs Premium). Bushnell Golf does not export.
+
+With two or more rounds the Coach tab shows a *strokes lost* table against your target score.
+
+## What the coaching is based on
+
+Every rule is a comparison of your per-club averages (last N days, 8+ shots) with an amateur-realistic window in `coaching/goals.py`. Each finding carries:
+
+- **why it costs strokes**
+- **measured vs target**
+- **a pass mark** ("7 of 10 shots with face-to-path inside ±3°") that the Plan and Progress tabs check automatically
+- **drills** tagged to the fault in `data/drills.yaml`, each marked *sim*, *home* or *course* and with the TrackMan number to watch
+
+Round rules compare putts, three-putts, penalties, GIR, FIR, doubles and scrambling with approximate benchmarks for your target score (`analysis/scoring.py`). The ranking is the point; the decimals are indicative.
+
+Scored practice games (`data/games.yaml`) are computed from the last 10 shots of a club in a session – Fairway Finder, Face Control 10, Smash Ten, Distance Control, Hit Up Ten, Down and Through.
+
+## Project layout
 
 ```
-golf-swing-coach/
-├── streamlit_app.py          # Main Streamlit application
-├── requirements.txt          # Python dependencies
-├── README.md
-│
-├── coaching/                 # Coaching logic
-│   ├── goals.py              # Club-specific thresholds
-│   ├── drills.py             # Drill loading and matching
-│   └── rules.py              # Metrics → pointers engine
-│
-├── video_analysis/           # AI pose analysis
-│   ├── pose.py               # MediaPipe wrapper
-│   ├── metrics.py            # Swing phase detection
-│   └── analyzer.py           # Main analysis pipeline
-│
-├── capture/                  # Video capture
-│   ├── guide.py              # Framing recommendations
-│   └── live.py               # WebRTC processors
-│
-├── data/                     # Data storage
-│   ├── drills.yaml           # Drill definitions
-│   └── sessions.py           # Session storage
-│
-├── integrations/             # Pro features (placeholder)
-│   ├── base.py               # Data contracts
-│   ├── trackman.py           # TrackMan connector
-│   └── bushnell.py           # Bushnell connector
-│
-├── core/                     # Utilities
-│   └── report.py             # PDF report generation
-│
-└── tests/                    # Test suite
-    ├── test_coaching.py      # Coaching rules tests
-    └── sample_metrics.json   # Test data
+streamlit_app.py        UI: Import · My Numbers · Coach · Plan · Rounds · Progress
+run_app.bat             Windows launcher (creates venv, installs, runs)
+
+integrations/
+  base.py               canonical shot schema (names + units)
+  trackman.py           tolerant TPS CSV importer, club normalization
+  rounds_csv.py         hole-by-hole round CSV importer
+
+data/
+  shots.py              JSONL shot store, folder scan, de-duplication
+  rounds.py             Round / HoleResult + JSONL store
+  plans.py              weekly plan history
+  settings.py           settings (export folder, handedness, target score)
+  drills.yaml           drills tagged to faults
+  games.yaml            scored practice games
+  store/                YOUR DATA (git-ignored)
+
+analysis/
+  prep.py               handedness sign normalization, filters, windows
+  gapping.py            per-club summary, bag gaps, yardage card
+  tendencies.py         shot-shape classification, strike quality
+  scoring.py            round stats, benchmarks, strokes lost
+  games.py              game scoring
+
+coaching/
+  goals.py              target windows per club category
+  rules.py              shot + round rules → CoachingPointer
+  plan.py               weekly plan generator + check evaluation
+  drills.py             drill loading / tag matching
+
+core/report.py          yardage card PNG
+tests/                  pytest suite with sample TrackMan + rounds CSVs
 ```
 
-## Local Development
+Your data lives in `data/store/` (override with the `GOLF_DATA_DIR` environment variable). Back it up occasionally; the Progress tab can export everything.
 
-### Prerequisites
-
-- Python 3.10+
-- pip or pipenv
-- Webcam (optional, for live capture)
-
-### Setup
+## Development
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the app
-streamlit run streamlit_app.py
-```
-
-### Running Tests
-
-```bash
-# Install test dependencies
-pip install pytest
-
-# Run all tests
 pytest tests/ -v
-
-# Run specific test file
-pytest tests/test_coaching.py -v
 ```
 
-### Testing Locally
+The video/camera version of this app is preserved on the `archive/video-capture-v1` branch.
 
-1. **Capture Tab**:
-   - Select club and camera angle (FO/DTL)
-   - Test live preview (requires localhost for camera)
-   - Or upload an existing video
+## Roadmap
 
-2. **Analyze Tab**:
-   - Upload golf swing video (MP4/MOV/AVI, max 20s)
-   - Click "Analyze Video"
-   - Review metrics, pointers, and drills
-   - Save session to track progress
-
-3. **Progress Tab**:
-   - View saved sessions
-   - Filter by club/angle
-   - Check trend charts
-
-## Deployment on Streamlit Cloud
-
-### Steps
-
-1. Push code to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your GitHub repository
-4. Configure:
-   - **Main file**: `streamlit_app.py`
-   - **Python version**: `3.10`
-5. Click Deploy
-
-### Streamlit Cloud Notes
-
-- ✅ Pure Python dependencies (no system packages needed)
-- ✅ WebRTC works (HTTPS automatic)
-- ⚠️ File storage is ephemeral (sessions reset on redeploy)
-- ⚠️ Use "Export Sessions" to backup progress data
-
-### Environment Variables (Optional)
-
-For pro integrations (when available):
-```
-TRACKMAN_CLIENT_ID=xxx
-TRACKMAN_CLIENT_SECRET=xxx
-BUSHNELL_API_KEY=xxx
-```
-
-## Video Analysis
-
-### Supported Formats
-
-- MP4, MOV, AVI
-- H.264 codec recommended
-- Maximum duration: 20 seconds
-- Target: 60 FPS (30+ recommended)
-
-### Metrics Computed
-
-| Metric | Description | Good Range |
-|--------|-------------|------------|
-| Tempo Ratio | Backswing:Downswing frames | 2.5-3.5 |
-| Head Sway | Horizontal head movement | <4cm (Driver) |
-| Hip Rotation | Hip line angle at top | >40° (Driver) |
-| Shoulder Rotation | Shoulder line angle at top | >85° (Driver) |
-| Lead Wrist Set | Wrist hinge at top | 50-90° |
-| Pelvis Slide | Hip center lateral movement | <5cm |
-
-### Confidence Levels
-
-- 🟢 **High**: Clear pose detection, reliable metrics
-- 🟡 **Medium**: Some frames unclear, metrics approximate
-- 🔴 **Low**: Poor detection, use results with caution
-
-## Troubleshooting
-
-### Camera Not Working
-
-**iOS Safari:**
-1. Tap "Aa" in address bar → Website Settings → Allow Camera
-2. Refresh the page after granting permission
-3. Must be on HTTPS (automatic on Streamlit Cloud)
-
-**Android Chrome:**
-1. Tap lock icon → Permissions → Camera → Allow
-2. Try switching between "Back camera" and "Front camera"
-
-**Desktop:**
-1. Click camera icon in address bar
-2. Select "Allow" and refresh if needed
-
-### Video Analysis Fails
-
-- Ensure full body is visible (head to feet)
-- Use good lighting (avoid strong backlight)
-- Keep camera steady (tripod recommended)
-- Include complete swing (address → finish)
-- Avoid very baggy clothing
-- Keep video under 20 seconds
-
-### Session Data Lost
-
-Streamlit Cloud has ephemeral storage. To preserve data:
-1. Go to Progress tab
-2. Click "Export Sessions (JSON)"
-3. Save the file locally
-
-## Adding New Drills
-
-Edit `data/drills.yaml`:
-
-```yaml
-- name: "Your Drill Name"
-  tags: ["tempo", "balance"]
-  difficulty: "beginner"
-  equipment: ["alignment stick"]
-  steps:
-    - "Step 1 description"
-    - "Step 2 description"
-  why: "Why this drill helps"
-```
-
-Available tags: `tempo`, `sway`, `balance`, `hips`, `shoulders`, `rotation`, `contact`, `impact`
-
-## Performance Limits
-
-| Limit | Value | Reason |
-|-------|-------|--------|
-| Max video duration | 20 seconds | Memory & processing time |
-| Target analysis FPS | 15 | Balance speed vs accuracy |
-| Session history | 100 recent | Storage efficiency |
-| Drills per pointer | 3 | UI clarity |
-
-## API / Integration Notes
-
-The `integrations/` package provides placeholder connectors for:
-
-- **TrackMan**: Launch monitor data (club speed, ball speed, spin)
-- **Bushnell Launch Pro**: Portable launch monitor integration
-- **FlightScope**: Mevo and X3 radar units
-- **Arccos/Garmin**: Round tracking and stats
-
-These are **not yet functional** but define the data contracts and architecture for future implementation.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Submit a pull request
-
-## License
-
-MIT License
-
-## Acknowledgments
-
-- [MediaPipe](https://mediapipe.dev/) for pose detection
-- [Streamlit](https://streamlit.io/) for the web framework
-- [streamlit-webrtc](https://github.com/whitphx/streamlit-webrtc) for camera access
+- Screenshot → round import (photograph a scorecard/app screen, extract the holes)
+- TrackMan Cloud API sync if TrackMan grants personal API credentials
+- Approach-shot proximity games using a target distance

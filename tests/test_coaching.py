@@ -1,250 +1,200 @@
 # tests/test_coaching.py
-# Tests for coaching rules and goal presets
-
-import pytest
 import sys
 from pathlib import Path
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import pandas as pd
+import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from analysis import aggregate_rounds, club_summary, filter_valid, prepare_shots, load_games
 from coaching import (
-    analyze_with_goals,
-    analyze_with_goals_detailed,
+    CATEGORY_GOALS,
+    build_weekly_plan,
+    evaluate_check,
+    evaluate_club,
+    evaluate_rounds,
+    evaluate_shots,
     get_goals_for_club,
-    CLUB_GOALS,
-    DEFAULT_GOALS,
+    get_pointer_drills,
     load_drills,
-    map_tags_to_drill_tags,
-    tag_to_drills,
+    top_priorities,
 )
+from data.plans import PlanStore
+from data.rounds import HoleResult, Round
+from integrations.rounds_csv import parse_rounds_csv
+from integrations.trackman import parse_trackman_csv
+
+SAMPLE = Path(__file__).parent / "sample_trackman.csv"
+ROUNDS = Path(__file__).parent / "sample_rounds.csv"
 
 
-class TestGoalPresets:
-    """Test club-specific goal presets."""
-
-    def test_all_clubs_have_goals(self):
-        """All expected clubs should have goal presets."""
-        expected_clubs = ["Driver", "3W", "Hybrid", "Long Iron", "Mid Iron", "Short Iron", "Wedge"]
-        for club in expected_clubs:
-            assert club in CLUB_GOALS, f"Missing goals for {club}"
-
-    def test_driver_has_required_fields(self):
-        """Driver goals should have all required threshold fields."""
-        driver = CLUB_GOALS["Driver"]
-        required_fields = [
-            "tempo_lower", "tempo_upper",
-            "head_sway_max",
-            "hip_rot_min",
-            "shoulder_rot_min"
-        ]
-        for field in required_fields:
-            assert field in driver, f"Driver missing {field}"
-
-    def test_get_goals_for_club_returns_merged(self):
-        """get_goals_for_club should merge defaults with club-specific."""
-        goals = get_goals_for_club("Driver")
-        # Should have default keys
-        assert "tempo_lower" in goals
-        # Values should be from Driver preset
-        assert goals["tempo_lower"] == CLUB_GOALS["Driver"]["tempo_lower"]
-
-    def test_get_goals_for_unknown_club_uses_defaults(self):
-        """Unknown club should still return defaults."""
-        goals = get_goals_for_club("Unknown Club")
-        assert goals == DEFAULT_GOALS
-
-    def test_goals_progression_by_club(self):
-        """Goals should get tighter from Driver to Wedge."""
-        driver = CLUB_GOALS["Driver"]
-        wedge = CLUB_GOALS["Wedge"]
-
-        # Head sway tolerance should decrease
-        assert driver["head_sway_max"] > wedge["head_sway_max"]
-
-        # Hip/shoulder minimums should decrease for shorter clubs
-        assert driver["hip_rot_min"] > wedge["hip_rot_min"]
+@pytest.fixture
+def shots():
+    return filter_valid(prepare_shots(parse_trackman_csv(SAMPLE).df, "right"))
 
 
-class TestCoachingRules:
-    """Test coaching rules engine."""
-
-    def test_good_swing_returns_positive_message(self):
-        """Swing within all goals should get positive feedback."""
-        metrics = {
-            "tempo_ratio": 3.0,
-            "head_sway_cm": 2.0,
-            "hip_rotation_deg_top": 45,
-            "shoulder_rotation_deg_top": 90,
-        }
-        goals = get_goals_for_club("Driver")
-        pointers, tags = analyze_with_goals(metrics, goals)
-
-        # Should have positive message and no issue tags
-        assert len(pointers) == 1
-        assert "solid" in pointers[0].lower() or len(tags) == 0
-
-    def test_fast_tempo_detected(self):
-        """Quick tempo should be flagged."""
-        metrics = {
-            "tempo_ratio": 2.0,  # Too fast for Driver (2.9-3.6)
-        }
-        goals = get_goals_for_club("Driver")
-        pointers, tags = analyze_with_goals(metrics, goals)
-
-        assert "fast_tempo" in tags or "tempo" in str(tags)
-        assert any("tempo" in p.lower() or "backswing" in p.lower() for p in pointers)
-
-    def test_head_sway_detected(self):
-        """Excessive head sway should be flagged."""
-        metrics = {
-            "head_sway_cm": 8.0,  # Way over 4.0 max for Driver
-        }
-        goals = get_goals_for_club("Driver")
-        pointers, tags = analyze_with_goals(metrics, goals)
-
-        assert "excess_sway" in tags or "sway" in str(tags)
-        assert any("head" in p.lower() or "sway" in p.lower() for p in pointers)
-
-    def test_limited_rotation_detected(self):
-        """Limited hip/shoulder rotation should be flagged."""
-        metrics = {
-            "hip_rotation_deg_top": 25,  # Below 40 min for Driver
-            "shoulder_rotation_deg_top": 70,  # Below 85 min for Driver
-        }
-        goals = get_goals_for_club("Driver")
-        pointers, tags = analyze_with_goals(metrics, goals)
-
-        # Should flag both rotation issues
-        assert any("hip" in t.lower() or "rotation" in t.lower() for t in tags)
-        assert any("shoulder" in t.lower() or "turn" in t.lower() for t in tags)
-
-    def test_detailed_pointers_have_structure(self):
-        """Detailed analysis should return structured pointers."""
-        metrics = {
-            "tempo_ratio": 2.0,
-            "head_sway_cm": 6.0,
-        }
-        goals = get_goals_for_club("Driver")
-        detailed = analyze_with_goals_detailed(metrics, goals)
-
-        assert len(detailed) >= 2
-
-        for pointer in detailed:
-            assert hasattr(pointer, "message")
-            assert hasattr(pointer, "why")
-            assert hasattr(pointer, "priority")
-            assert hasattr(pointer, "tags")
-            assert pointer.priority >= 1
-
-    def test_pointers_sorted_by_priority(self):
-        """Pointers should be sorted by priority."""
-        metrics = {
-            "tempo_ratio": 2.0,  # Priority 2
-            "head_sway_cm": 6.0,  # Priority 1
-        }
-        goals = get_goals_for_club("Driver")
-        detailed = analyze_with_goals_detailed(metrics, goals)
-
-        # Head sway (priority 1) should come before tempo (priority 2)
-        priorities = [p.priority for p in detailed]
-        assert priorities == sorted(priorities)
+@pytest.fixture
+def drills():
+    return load_drills()
 
 
-class TestDrills:
-    """Test drill loading and matching."""
-
-    def test_drills_load(self):
-        """Drills should load from YAML file."""
-        drills = load_drills()
-        assert len(drills) >= 10, "Should have at least 10 drills"
-
-    def test_drills_have_required_fields(self):
-        """Each drill should have required fields."""
-        drills = load_drills()
-        required = ["name", "tags", "steps"]
-
-        for drill in drills:
-            for field in required:
-                assert field in drill, f"Drill missing {field}: {drill.get('name', 'unknown')}"
-
-    def test_tag_mapping(self):
-        """Tag aliases should map correctly."""
-        # fast_tempo should map to tempo
-        mapped = map_tags_to_drill_tags(["fast_tempo"])
-        assert "tempo" in mapped
-
-        # excess_sway should map to sway
-        mapped = map_tags_to_drill_tags(["excess_sway"])
-        assert "sway" in mapped
-
-    def test_drill_matching(self):
-        """Drills should match tags correctly."""
-        drills = load_drills()
-
-        # Find drills for tempo issues
-        tempo_drills = tag_to_drills(["tempo"], drills)
-        assert len(tempo_drills) >= 1
-        assert any("tempo" in d["name"].lower() or "tempo" in d.get("tags", []) for d in tempo_drills)
+def _row(**kw) -> pd.Series:
+    base = {"shots": 12, "carry_med": 150.0, "carry_std": 6.0, "carry_cv": 0.04, "side_std": 8.0,
+            "ftp_mean": 0.5, "ftp_std": 2.0, "path_mean": 1.0, "attack_mean": -3.0, "spin_mean": 6500.0,
+            "launch_mean": 18.0, "smash_mean": 1.37, "smash_std": 0.03, "spin_loft_mean": 21.0}
+    base.update(kw)
+    return pd.Series(base)
 
 
-# Sample metrics profiles for testing
-SAMPLE_METRICS = [
-    {
-        "name": "good_driver_swing",
-        "club": "Driver",
-        "metrics": {
-            "tempo_ratio": 3.1,
-            "head_sway_cm": 3.5,
-            "hip_rotation_deg_top": 42,
-            "shoulder_rotation_deg_top": 88,
-            "lead_wrist_set_deg_top": 65,
-            "pelvis_slide_cm": 4.0,
-        },
-        "expected_issues": 0,
-    },
-    {
-        "name": "rushed_swing",
-        "club": "Driver",
-        "metrics": {
-            "tempo_ratio": 2.3,
-            "head_sway_cm": 3.0,
-            "hip_rotation_deg_top": 45,
-            "shoulder_rotation_deg_top": 90,
-        },
-        "expected_issues": 1,  # Fast tempo
-    },
-    {
-        "name": "sway_and_limited_turn",
-        "club": "7 Iron",
-        "metrics": {
-            "tempo_ratio": 2.8,
-            "head_sway_cm": 5.5,
-            "hip_rotation_deg_top": 28,
-            "shoulder_rotation_deg_top": 65,
-        },
-        "expected_issues": 3,  # Sway, hip, shoulder
-    },
-]
+class TestGoals:
+    def test_all_categories_present(self):
+        for cat in ["Driver", "Wood", "Hybrid", "Long Iron", "Mid Iron", "Short Iron", "Wedge"]:
+            assert cat in CATEGORY_GOALS
+
+    def test_goals_for_club_merge_defaults(self):
+        g = get_goals_for_club("7 Iron")
+        assert g["attack_max"] == CATEGORY_GOALS["Mid Iron"]["attack_max"]
+        assert "path_min" in g  # from defaults
 
 
-class TestSampleProfiles:
-    """Test with sample metric profiles."""
+class TestClubRules:
+    def test_clean_club_has_no_findings(self):
+        assert evaluate_club("7 Iron", _row()) == []
 
-    @pytest.mark.parametrize("profile", SAMPLE_METRICS, ids=lambda p: p["name"])
-    def test_sample_profile(self, profile):
-        """Test that sample profiles produce expected issue counts."""
-        goals = get_goals_for_club(profile.get("club", "Driver"))
-        detailed = analyze_with_goals_detailed(profile["metrics"], goals)
+    def test_open_face_is_priority_one(self):
+        ps = evaluate_club("7 Iron", _row(ftp_mean=5.5))
+        ids = [p.rule_id for p in ps]
+        assert "face_open" in ids
+        assert next(p for p in ps if p.rule_id == "face_open").priority == 1
 
-        # Allow some tolerance in issue count
-        actual_issues = len(detailed)
-        expected = profile["expected_issues"]
+    def test_closed_face(self):
+        ids = [p.rule_id for p in evaluate_club("7 Iron", _row(ftp_mean=-4.5))]
+        assert "face_closed" in ids
 
-        assert actual_issues >= expected - 1, (
-            f"{profile['name']}: Expected ~{expected} issues, got {actual_issues}"
-        )
+    def test_over_the_top(self):
+        ps = evaluate_club("Driver", _row(path_mean=-5.0, attack_mean=1.0, spin_mean=2600, launch_mean=12, smash_mean=1.47, side_std=15))
+        assert [p.rule_id for p in ps] == ["path_out_to_in"]
+
+    def test_driver_negative_attack(self):
+        ps = evaluate_club("Driver", _row(attack_mean=-3.0, spin_mean=3600, launch_mean=9.5, smash_mean=1.47, side_std=15))
+        ids = [p.rule_id for p in ps]
+        assert "driver_attack_down" in ids
+        # spin/launch rules are suppressed when the attack rule already explains them
+        assert "driver_spin_high" not in ids and "driver_launch_low" not in ids
+
+    def test_driver_spin_without_attack_issue(self):
+        ps = evaluate_club("Driver", _row(attack_mean=1.0, spin_mean=3600, launch_mean=12, smash_mean=1.47, side_std=15))
+        assert [p.rule_id for p in ps] == ["driver_spin_high"]
+
+    def test_iron_not_hitting_down(self):
+        ids = [p.rule_id for p in evaluate_club("8 Iron", _row(attack_mean=0.5))]
+        assert "iron_attack_shallow" in ids
+
+    def test_wedge_distance_control(self):
+        ps = evaluate_club("SW", _row(attack_mean=-4, spin_mean=9000, launch_mean=30, smash_mean=1.2, carry_std=10, carry_cv=0.12, side_std=5))
+        assert [p.rule_id for p in ps] == ["distance_inconsistent"]
+        assert ps[0].priority == 2
+
+    def test_low_smash(self):
+        ids = [p.rule_id for p in evaluate_club("7 Iron", _row(smash_mean=1.26))]
+        assert "strike_low" in ids
+
+    def test_sample_file_findings(self, shots):
+        ps = evaluate_shots(shots, "right", min_shots=8)
+        ids = {(p.club, p.rule_id) for p in ps}
+        # the sample driver slices with a downward strike; the 7-iron has an open face
+        assert ("Driver", "face_open") in ids
+        assert ("Driver", "driver_attack_down") in ids
+        assert ("7 Iron", "face_open") in ids
+        # PW only has 8 shots and is clean
+        assert not any(c == "PW" for c, _ in ids)
+        # sorted by priority
+        assert [p.priority for p in ps] == sorted(p.priority for p in ps)
+        for p in ps:
+            assert p.success_criterion and p.check and p.why
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestRoundRules:
+    @pytest.fixture
+    def agg(self):
+        rounds, _ = parse_rounds_csv(ROUNDS.read_bytes())
+        return aggregate_rounds(rounds)
+
+    def test_sample_rounds_flag_penalties_and_putting(self, agg):
+        ps = evaluate_rounds(agg, 85)
+        ids = [p.rule_id for p in ps]
+        assert "penalties_high" in ids
+        assert "three_putts_high" in ids
+        assert all(p.source == "rounds" for p in ps)
+
+    def test_needs_two_rounds(self, agg):
+        assert evaluate_rounds({"n_rounds": 1, "penalties": 5}, 85) == []
+
+    def test_good_rounds_no_findings(self):
+        holes = [HoleResult(i, 4, 4, putts=2, fir=True, gir=True, penalties=0) for i in range(1, 19)]
+        rounds = [Round.create("2026-08-01", "X", holes), Round.create("2026-08-08", "X", holes)]
+        assert evaluate_rounds(aggregate_rounds(rounds), 85) == []
+
+
+class TestPrioritiesAndPlan:
+    def test_top_priorities_mix_sources(self, shots):
+        rounds, _ = parse_rounds_csv(ROUNDS.read_bytes())
+        sp = evaluate_shots(shots, "right")
+        rp = evaluate_rounds(aggregate_rounds(rounds), 85)
+        top = top_priorities(sp, rp, k=3)
+        assert len(top) == 3
+        assert len({p.rule_id for p in top}) == 3
+        assert any(p.source == "rounds" for p in top)
+
+    def test_drills_match_pointers(self, shots, drills):
+        for p in evaluate_shots(shots, "right"):
+            assert get_pointer_drills(p, drills), f"no drills for {p.rule_id}"
+
+    def test_every_drill_tag_is_used_by_a_rule_or_game(self, drills):
+        used = {"face_control", "dispersion", "slice", "hook", "path", "over_the_top", "attack_angle_driver",
+                "attack_angle_iron", "low_point", "spin_loft", "strike", "distance_control", "wedge_distance",
+                "approach", "tempo", "putting_lag", "putting_short", "course_management", "tee_strategy",
+                "bogey_strategy", "chipping"}
+        for d in drills:
+            assert set(d["tags"]) & used, f"drill {d['name']} has no actionable tag"
+            assert d.get("where") in ("sim", "home", "course")
+            assert d.get("steps")
+
+    def test_plan_structure(self, shots, drills):
+        rounds, _ = parse_rounds_csv(ROUNDS.read_bytes())
+        sp = evaluate_shots(shots, "right")
+        rp = evaluate_rounds(aggregate_rounds(rounds), 85)
+        top = top_priorities(sp, rp, k=3)
+        summary = club_summary(shots, 5)
+        plan = build_weekly_plan(top, summary, drills, load_games(), "right")
+        assert len(plan.sessions) == 3
+        assert plan.sessions[0].title.startswith("Session 1")
+        assert any(b.kind == "game" for b in plan.sessions[1].blocks)
+        assert plan.on_course_rule
+        assert plan.checks and all("metric" in c for c in plan.checks)
+        assert all(s.minutes > 0 for s in plan.sessions)
+        # the technical session includes a transfer block with a pass mark
+        assert any(b.name.startswith("Transfer") and b.success_metric for b in plan.sessions[0].blocks)
+
+    def test_plan_without_data(self, drills):
+        plan = build_weekly_plan([], None, drills, load_games(), "right")
+        assert plan.sessions and plan.focus
+
+    def test_plan_roundtrip_store(self, tmp_path, shots, drills):
+        plan = build_weekly_plan(evaluate_shots(shots, "right")[:2], club_summary(shots, 5), drills, load_games())
+        store = PlanStore(tmp_path)
+        assert store.save(plan)
+        loaded = store.latest()
+        assert loaded.week_of == plan.week_of and len(loaded.sessions) == len(plan.sessions)
+        assert loaded.sessions[0].blocks[0].name == plan.sessions[0].blocks[0].name
+
+    def test_evaluate_check(self, shots):
+        summary = club_summary(shots, 5)
+        chk = {"metric": "ftp_mean", "club": "Driver", "op": "abs<=", "value": 2.5, "label": "x"}
+        r = evaluate_check(chk, summary, {})
+        assert r["ok"] is False and r["value"] > 2.5
+        r2 = evaluate_check({"metric": "penalties", "club": "", "op": "<=", "value": 1.2}, summary, {"penalties": 0.5})
+        assert r2["ok"] is True
+        r3 = evaluate_check({"metric": "penalties", "club": "", "op": "<=", "value": 1.2}, summary, {})
+        assert r3["ok"] is None

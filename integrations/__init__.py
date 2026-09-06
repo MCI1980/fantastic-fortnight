@@ -1,37 +1,30 @@
-# integrations package - External service connectors
-# Pro integrations for launch monitors, scoring, etc.
+# integrations package - importers for external data sources
+#
+# Today: TrackMan Performance Studio CSV exports (launch monitor) and
+# hole-by-hole round CSVs from scoring apps (Golfity, Golf Pad, ...).
 
-from integrations.base import (
-    BaseConnector,
-    LaunchMonitorData,
-    RoundData,
-    ShotData,
-    IntegrationError,
+from integrations.base import SHOT_FIELDS, NUMERIC_FIELDS, SIGNED_FIELDS
+from integrations.trackman import (
+    parse_trackman_csv,
+    ParseResult,
+    normalize_club,
+    club_category,
+    club_sort_key,
+    content_hash,
+    shot_hash,
 )
-from integrations.trackman import TrackManConnector
-from integrations.bushnell import BushnellConnector
-from integrations.config import (
-    IntegrationConfig,
-    FEATURE_FLAGS,
-    is_feature_enabled,
-    get_available_integrations,
-    get_enabled_integrations,
-)
+from integrations.rounds_csv import parse_rounds_csv
 
 __all__ = [
-    # Base classes and data contracts
-    "BaseConnector",
-    "LaunchMonitorData",
-    "RoundData",
-    "ShotData",
-    "IntegrationError",
-    # Connectors
-    "TrackManConnector",
-    "BushnellConnector",
-    # Config
-    "IntegrationConfig",
-    "FEATURE_FLAGS",
-    "is_feature_enabled",
-    "get_available_integrations",
-    "get_enabled_integrations",
+    "SHOT_FIELDS",
+    "NUMERIC_FIELDS",
+    "SIGNED_FIELDS",
+    "parse_trackman_csv",
+    "ParseResult",
+    "normalize_club",
+    "club_category",
+    "club_sort_key",
+    "content_hash",
+    "shot_hash",
+    "parse_rounds_csv",
 ]

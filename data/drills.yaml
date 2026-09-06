@@ -1,168 +1,294 @@
-# Golf Coaching Drills
-# Each drill has: name, tags (for matching), difficulty, equipment, steps
-# Safety note: These are general practice suggestions, not medical advice.
+# Coaching drills, tagged to the faults the rules engine detects.
+# "where": sim (do it on the TrackMan), home (no ball needed), course.
+# Safety note: general practice suggestions, not medical advice.
 
-- name: "Metronome Tempo Drill"
-  tags: ["tempo"]
-  difficulty: "beginner"
-  equipment: ["metronome or phone app"]
+# ---------------------------------------------------------------- face control
+- name: "Gate Drill (face control)"
+  tags: [face_control, dispersion, slice, hook]
+  where: sim
+  difficulty: beginner
+  equipment: ["two tees or alignment sticks"]
   steps:
-    - "Set metronome to 60 BPM."
-    - "Count 1-2-3 on backswing, 4 on downswing."
-    - "Start with half swings, then progress to full."
-    - "Aim for 3:1 tempo ratio."
-  why: "Builds a consistent, repeatable swing rhythm."
+    - "Push two tees into the mat or use two sticks just wider than the clubhead, one heel side and one toe side."
+    - "Hit half-swing 7-irons through the gate. Check face-to-path on the TrackMan after every shot."
+    - "Goal is not distance: 10 shots with face-to-path inside ±2.5°."
+    - "Only when you get 7/10 do you move to full swings."
+  why: "Gives instant feedback on where the face is pointing at impact, which controls where the ball finishes."
+  trackman_watch: "Face To Path"
 
-- name: "Pause at the Top"
-  tags: ["tempo", "balance"]
-  difficulty: "beginner"
+- name: "Toe-Up to Toe-Up"
+  tags: [face_control, slice]
+  where: sim
+  difficulty: beginner
   equipment: []
   steps:
-    - "Make a normal backswing."
-    - "Pause for 1 full second at the top."
-    - "Then complete the downswing smoothly."
-    - "Repeat 10 times, focusing on balance."
-  why: "Helps eliminate rushing and improves transition timing."
+    - "Make waist-high to waist-high swings with an 8-iron."
+    - "At waist height on the way back the toe points at the sky; at waist height on the way through the toe points at the sky again."
+    - "Feel the forearms rotate through impact. If the ball starts right and curves right, rotate earlier."
+    - "Hit 15 balls; watch face angle move from open toward zero."
+  why: "Trains the release that squares an open face without steering."
+  trackman_watch: "Face Angle and Face To Path"
 
-- name: "Head Against Wall Drill"
-  tags: ["sway"]
-  difficulty: "beginner"
-  equipment: ["wall or door frame"]
+- name: "Grip Check and Closed-Face Reps"
+  tags: [face_control, slice]
+  where: home
+  difficulty: beginner
+  equipment: ["a club"]
   steps:
-    - "Stand with your head lightly touching a wall (use a towel for comfort)."
-    - "Make slow backswings keeping head contact."
-    - "Feel your body rotate around a stable head."
-    - "Progress to half swings, maintaining contact."
-  why: "Trains your body to rotate without lateral head movement."
+    - "Take your grip and look down: you should see 2-3 knuckles on the lead hand. If you see 1, turn the hand toward the trail side."
+    - "Set the clubface slightly closed at address (toe a fraction ahead) and take 10 rehearsal swings feeling the face rotate closed through impact."
+    - "Hit 10 balls with the slightly closed feel and compare face-to-path to your normal."
+  why: "A weak grip is the most common cause of an open face; adjusting it changes the average without a swing rebuild."
+  trackman_watch: "Face To Path average over 10 shots"
 
-- name: "Alignment Stick Head Check"
-  tags: ["sway", "balance"]
-  difficulty: "intermediate"
-  equipment: ["alignment stick", "hat or visor"]
-  steps:
-    - "Place alignment stick in ground at address, touching your cap brim."
-    - "Make slow swings without moving away from the stick."
-    - "If your head moves off the stick, you're swaying."
-    - "Practice until you can swing without losing contact."
-  why: "Provides instant feedback on head movement during the swing."
-
-- name: "Chair Hip Rotation Drill"
-  tags: ["hips", "rotation"]
-  difficulty: "beginner"
-  equipment: ["chair"]
-  steps:
-    - "Sit on edge of chair, feet flat, arms crossed on chest."
-    - "Rotate shoulders like a backswing while keeping hips stable."
-    - "Feel the stretch in your core/obliques."
-    - "Hold 2 seconds, return. Repeat 10 times each side."
-  why: "Builds hip-shoulder separation awareness without full swing."
-
-- name: "Step-Through Drill"
-  tags: ["hips", "balance", "rotation"]
-  difficulty: "intermediate"
+- name: "Hold-Off Finish (anti-hook)"
+  tags: [face_control, hook]
+  where: sim
+  difficulty: intermediate
   equipment: []
   steps:
-    - "Address the ball normally."
-    - "On the downswing, let your back foot step toward the target."
-    - "Finish with feet together, facing target."
-    - "This forces proper weight shift and hip rotation."
-  why: "Teaches dynamic weight transfer and prevents hanging back."
+    - "Hit 7-irons with a three-quarter swing and finish with the clubface pointing at the sky, logo up, chest facing the target."
+    - "Feel the lead wrist stay firm through impact rather than rolling over."
+    - "Check face-to-path: aim for -1° to +1°."
+  why: "Stops the face from shutting too fast, which is what turns a draw into a hook."
+  trackman_watch: "Face To Path"
 
-- name: "Shoulder Turn with Club Across Chest"
-  tags: ["shoulders", "rotation"]
-  difficulty: "beginner"
+# ---------------------------------------------------------------------- path
+- name: "Headcover Outside the Ball"
+  tags: [path, over_the_top, slice]
+  where: sim
+  difficulty: beginner
+  equipment: ["headcover or a rolled towel"]
+  steps:
+    - "Place a headcover just outside the ball and slightly behind it, on the target line."
+    - "To miss the headcover the club must approach from inside. Start with half swings."
+    - "Check club path: you want it to move from negative toward 0 to +3."
+    - "20 balls, then remove the headcover and hit 10 more keeping the feel."
+  why: "Physically blocks the over-the-top move and trains an inside approach."
+  trackman_watch: "Club Path"
+
+- name: "Pump Drill (transition)"
+  tags: [path, over_the_top, tempo]
+  where: sim
+  difficulty: intermediate
   equipment: []
   steps:
-    - "Hold a club across your chest, arms crossed."
-    - "Take your golf posture."
-    - "Rotate as if making a backswing - club should point at ball."
-    - "Feel your left shoulder (for righties) move under your chin."
-  why: "Isolates and measures shoulder rotation without arm involvement."
+    - "Swing to the top, then pump the arms down to hip height twice, feeling the trail elbow drop in front of the hip."
+    - "On the third pump, swing through and hit the ball."
+    - "Feel like you are swinging out to 'right field' (for a right-hander)."
+    - "10 balls with pumps, 10 without."
+  why: "Rehearses the downswing sequence that drops the club onto an inside path."
+  trackman_watch: "Club Path and Swing Direction"
 
-- name: "Trail Arm Only Drill"
-  tags: ["shoulders", "contact"]
-  difficulty: "intermediate"
-  equipment: ["short iron or wedge"]
+- name: "Swing to Right Field"
+  tags: [path, over_the_top]
+  where: sim
+  difficulty: beginner
+  equipment: ["alignment stick"]
   steps:
-    - "Grip club with trail hand only (right for righties)."
-    - "Make small pitch swings to a target 30-50 yards."
-    - "Focus on keeping trail elbow close to body."
-    - "This promotes proper arm/shoulder connection."
-  why: "Builds feel for connected arm swing and proper rotation sequence."
+    - "Lay an alignment stick on the ground pointing 15-20 yards right of the target (right-hander)."
+    - "Swing the club along the stick through impact; the ball may start right at first, that is fine."
+    - "Once path reads +2 to +4, square the face with the Gate Drill to bring the ball back to target."
+  why: "Exaggerating the inside-out feel is the quickest way to shift a negative path."
+  trackman_watch: "Club Path"
 
-- name: "Impact Bag Drill"
-  tags: ["impact", "contact"]
-  difficulty: "beginner"
-  equipment: ["impact bag or old duffel with towels"]
+# ------------------------------------------------------------- driver launch
+- name: "Tee It High, Ball Forward"
+  tags: [attack_angle_driver]
+  where: sim
+  difficulty: beginner
+  equipment: ["tee"]
   steps:
-    - "Address the bag as if it were a ball."
-    - "Make slow swings, stopping at impact position."
-    - "Check: hands ahead of clubhead, weight on front foot."
-    - "Gradually increase speed, always stopping at impact."
-  why: "Trains proper impact position with hands leading the clubhead."
+    - "Tee the ball so half of it is above the crown of the driver."
+    - "Play the ball off the lead heel and drop the trail shoulder so the spine tilts slightly away from the target."
+    - "Hit 10 drivers checking attack angle after each. Target is 0° or higher."
+    - "If still negative, move the ball a ball-width further forward."
+  why: "Setup alone usually moves attack angle 2-3° upward, which adds launch and cuts spin."
+  trackman_watch: "Attack Angle, Launch Angle, Spin Rate"
 
-- name: "Towel Under Arms Drill"
-  tags: ["contact", "rotation"]
-  difficulty: "beginner"
-  equipment: ["small towel"]
+- name: "Headcover Behind the Ball (driver)"
+  tags: [attack_angle_driver]
+  where: sim
+  difficulty: intermediate
+  equipment: ["headcover or towel"]
   steps:
-    - "Tuck a towel under both armpits."
-    - "Make half swings keeping the towel in place."
-    - "If towel drops, arms are disconnecting from body."
-    - "Progress to 3/4 swings while maintaining connection."
-  why: "Promotes body-arm connection for more consistent contact."
+    - "Place a headcover about 8 inches behind the teed ball."
+    - "Swing so the driver misses the headcover on the way down; the low point must be behind the ball, then the club moves up into it."
+    - "10 balls: count how many are hit with attack angle at or above 0°."
+  why: "Forces the low point behind the ball, which is exactly what a positive attack angle requires."
+  trackman_watch: "Attack Angle"
 
-- name: "Feet Together Balance Drill"
-  tags: ["balance"]
-  difficulty: "beginner"
+# ------------------------------------------------------------- iron low point
+- name: "Towel Behind the Ball (irons)"
+  tags: [low_point, attack_angle_iron, strike]
+  where: sim
+  difficulty: beginner
+  equipment: ["towel"]
+  steps:
+    - "Fold a towel and place it 6 inches behind the ball."
+    - "Hit 7-irons without touching the towel. Ball first, then mat."
+    - "Watch attack angle: aim for -2° to -5°. Watch smash factor climb as strikes improve."
+    - "15 balls with the towel, 10 without."
+  why: "Makes the low point move in front of the ball, which fixes fat and thin shots at the same time."
+  trackman_watch: "Attack Angle and Smash Factor"
+
+- name: "Lead-Side Pressure Drill"
+  tags: [low_point, attack_angle_iron, spin_loft]
+  where: sim
+  difficulty: beginner
   equipment: []
   steps:
-    - "Stand with feet together (touching)."
-    - "Make half swings with a short iron."
-    - "Focus on maintaining balance throughout."
-    - "If you fall off balance, swing is too aggressive."
-  why: "Reveals and corrects balance issues in the swing."
+    - "Set up with 60% of your weight on the lead foot and keep it there through the swing."
+    - "Hit three-quarter 8-irons feeling the hands ahead of the clubhead at impact."
+    - "Check dynamic loft and spin loft: both should drop compared with your normal shots."
+  why: "Keeping pressure forward delivers a descending strike and less added loft, which raises ball speed and spin consistency."
+  trackman_watch: "Attack Angle, Dynamic Loft"
 
-- name: "One-Leg Finish Drill"
-  tags: ["balance", "rotation"]
-  difficulty: "intermediate"
+- name: "Shaft Lean Punch Shots"
+  tags: [spin_loft, low_point, distance_control]
+  where: sim
+  difficulty: intermediate
   equipment: []
   steps:
-    - "Make a normal swing."
-    - "Hold your finish on your front foot only."
-    - "Back foot should be on toe, no weight on it."
-    - "Hold for 3 seconds without wobbling."
-  why: "Ensures proper weight transfer and balanced finish position."
+    - "Play the ball back of centre and make half swings with a 7-iron, finishing with the hands low and the clubhead below the hands."
+    - "Feel the lead wrist flat or slightly bowed at impact."
+    - "10 balls: dynamic loft should be several degrees below your normal, and ball speed higher for the same club speed."
+  why: "Teaches the compressed strike that removes the flip and stabilises distance."
+  trackman_watch: "Spin Loft, Smash Factor"
 
-- name: "Slow Motion Swings"
-  tags: ["tempo", "balance", "rotation"]
-  difficulty: "beginner"
+# ------------------------------------------------------------------- strike
+- name: "Feet Together Strikes"
+  tags: [strike, tempo, dispersion]
+  where: sim
+  difficulty: beginner
   equipment: []
   steps:
-    - "Make a full swing at 25% speed."
-    - "Take 8-10 seconds from address to finish."
-    - "Feel every position: takeaway, top, impact, finish."
-    - "Repeat 5 times, then hit a ball at normal speed."
-  why: "Builds awareness of swing positions and muscle memory."
+    - "Stand with your feet touching and hit 8-irons at 70% speed."
+    - "You cannot sway, so the club returns to the ball more consistently. Balance is the score."
+    - "15 balls, then normal stance for 10 and compare smash factor."
+  why: "Removes lateral movement, which is the most common cause of off-centre contact."
+  trackman_watch: "Smash Factor"
 
-- name: "Hip Bump Drill"
-  tags: ["hips", "impact"]
-  difficulty: "intermediate"
-  equipment: ["alignment stick or chair"]
+- name: "Impact Location Check"
+  tags: [strike]
+  where: sim
+  difficulty: beginner
+  equipment: ["foot spray or impact tape"]
   steps:
-    - "Place a stick or chair just outside your lead hip at address."
-    - "On downswing, bump your hip into the obstacle."
-    - "This initiates proper lower body sequence."
-    - "Practice without a ball first, then add ball."
-  why: "Trains the hips to lead the downswing for more power."
+    - "Spray the face and hit 5 balls. Note where the marks are: heel, toe, low, high."
+    - "Heel marks: stand a fraction further from the ball and feel the arms extend. Toe marks: move closer and keep the chest over the ball."
+    - "Repeat in sets of 5 until 4 of 5 are within a coin of the centre."
+  why: "Smash factor tells you contact is off-centre; the spray tells you which way, so the fix is specific."
+  trackman_watch: "Smash Factor and Ball Speed"
 
-- name: "Split Grip Drill"
-  tags: ["contact", "impact"]
-  difficulty: "intermediate"
+# ------------------------------------------------------- distance control
+- name: "Clock System Wedges"
+  tags: [distance_control, wedge_distance, approach]
+  where: sim
+  difficulty: beginner
   equipment: []
   steps:
-    - "Grip club with hands 3-4 inches apart."
-    - "Make slow, controlled swings."
-    - "Focus on keeping lead wrist flat through impact."
-    - "Feel how hands work together through the hitting zone."
-  why: "Promotes proper wrist action and hand path through impact."
+    - "With your gap or sand wedge, hit 5 shots each with the lead arm stopping at 7:30, 9:00 and 10:30 on the backswing."
+    - "Write down the median carry for each length. Those are your three wedge numbers."
+    - "Then call a number (for example 65 yards) and hit it; a point for every shot within 5 yards."
+  why: "Gives you repeatable partial wedge distances instead of guessing with a full swing."
+  trackman_watch: "Carry"
+
+- name: "Same Club, Same Number"
+  tags: [distance_control, strike, approach]
+  where: sim
+  difficulty: beginner
+  equipment: []
+  steps:
+    - "Pick your 8-iron and hit 10 balls at normal effort."
+    - "Goal: 7 of 10 carries within 5% of the median (about ±7 yards at 140)."
+    - "If carries are scattered, check smash factor first (strike), then spin (loft delivery)."
+  why: "Builds the trust to aim at a number on the course rather than 'about a 7-iron'."
+  trackman_watch: "Carry and Smash Factor"
+
+- name: "Tempo Count"
+  tags: [tempo, distance_control, dispersion]
+  where: sim
+  difficulty: beginner
+  equipment: ["metronome app (optional)"]
+  steps:
+    - "Count 'one-two-three' to the top and 'one' down. Keep the same count with every club."
+    - "Hit 10 balls at 80% effort. Compare carry spread and dispersion with your normal 10."
+    - "Most golfers lose nothing in distance and gain a lot of consistency at 80%."
+  why: "A consistent tempo produces consistent contact, which is where distance control comes from."
+  trackman_watch: "Carry spread and Club Speed spread"
+
+# ----------------------------------------------------------------- putting
+- name: "Lag Ladder (no simulator needed)"
+  tags: [putting_lag]
+  where: home
+  difficulty: beginner
+  equipment: ["putter, 3 balls, a hallway or carpet, or the practice green"]
+  steps:
+    - "Putt to a target 25, 35 and 45 feet away (a towel or a tee works)."
+    - "Score a point for every ball that finishes within 3 feet past or short of the target, never more than 3 feet past."
+    - "10 minutes, 3 balls per distance, 3 rounds. Track your points per session."
+  why: "Three-putts come from poor distance control, not poor lines. Speed practice fixes them fastest."
+  trackman_watch: "n/a - count points per session"
+
+- name: "3-6 Foot Circle"
+  tags: [putting_short]
+  where: home
+  difficulty: beginner
+  equipment: ["putter, 4 balls"]
+  steps:
+    - "Place 4 balls around the hole (or a cup on the carpet) at 3 feet, then 4 balls at 6 feet."
+    - "Hole all 8 in a row to finish. Miss one, start the set again."
+    - "5-10 minutes, three times a week."
+  why: "Short putts are where a saved bogey becomes a double. Confidence here removes strokes every round."
+  trackman_watch: "n/a - record how many attempts to complete the circle"
+
+# ------------------------------------------------------- course management
+- name: "Play to Your Safe Number"
+  tags: [course_management, tee_strategy, approach]
+  where: course
+  difficulty: beginner
+  equipment: ["your yardage card from the My Numbers tab"]
+  steps:
+    - "Before every approach, check the carry needed to clear trouble. If it is more than your Safe number for the club, take one more club or lay up."
+    - "Aim at the middle of the green unless the pin is in the middle third."
+    - "Note every time you break the rule; count the strokes it cost."
+  why: "Most penalties and short-sided chips come from playing your best shot instead of your average one."
+  trackman_watch: "Safe (20th percentile) carry per club"
+
+- name: "Tee Shot Club Selection Rule"
+  tags: [tee_strategy, course_management, dispersion]
+  where: course
+  difficulty: beginner
+  equipment: ["yardage card"]
+  steps:
+    - "Your driver's ± number is your one-sigma dispersion. If the fairway plus safe rough is narrower than twice that number, hit the next club down."
+    - "On holes with water or out of bounds on one side, aim at the far edge of the fairway on the safe side."
+    - "Track fairways hit and penalties for three rounds with this rule."
+  why: "Trades a few yards of distance for a big drop in penalty strokes."
+  trackman_watch: "Driver side dispersion (±)"
+
+- name: "Bogey Is Fine"
+  tags: [bogey_strategy, course_management]
+  where: course
+  difficulty: beginner
+  equipment: []
+  steps:
+    - "After any shot that leaves you in trouble, the next shot's only job is to get back in play with a full swing for the following one."
+    - "No shots through gaps, over trees or across water from a bad lie."
+    - "Count doubles per round; the goal is two or fewer."
+  why: "Blow-up holes are the difference between 90 and 84 for most golfers, and they are a decision problem, not a swing problem."
+  trackman_watch: "n/a - doubles per round in the Rounds tab"
+
+# ---------------------------------------------------------------- short game
+- name: "Landing Spot Chipping"
+  tags: [chipping, wedge_distance]
+  where: home
+  difficulty: beginner
+  equipment: ["wedge, a towel, a few balls, backyard or practice green"]
+  steps:
+    - "Put a towel 3 paces onto the green from the fringe and chip so the ball lands on the towel."
+    - "10 balls with a pitching wedge, 10 with a sand wedge. Note how far each runs out after landing."
+    - "Pick the club whose roll-out matches the shot rather than changing the swing."
+  why: "Up-and-downs come from predictable landing spots, not from spin or flop shots."
+  trackman_watch: "n/a - count towel hits"
