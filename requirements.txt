@@ -1,11 +1,8 @@
-streamlit==1.37.0
-streamlit-webrtc==0.47.7
-opencv-python-headless==4.9.0.80
-av==12.3.0
-PyYAML==6.0.1
-Pillow==10.3.0
-numpy==1.26.4
-mediapipe==0.10.14
+streamlit>=1.37,<2
+pandas>=2.0,<3
+numpy>=1.26,<3
+PyYAML>=6.0
+Pillow>=10.0
 
-# Testing (optional)
-pytest==8.0.0
+# Testing
+pytest>=8.0

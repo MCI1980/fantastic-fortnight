@@ -1,0 +1,69 @@
+# Scored practice games. Each is computed automatically from the last N
+# shots of a club in an imported TrackMan session.
+#
+# rule options:
+#   abs_within            |metric| <= threshold
+#   at_least              metric >= threshold
+#   at_most               metric <= threshold
+#   at_least_expected     smash >= expected smash for the club + threshold
+#   within_pct_of_median  |metric - median| <= threshold * median
+
+- id: fairway_finder
+  name: "Fairway Finder"
+  club_category: Driver
+  shots: 10
+  metric: side_yds
+  rule: abs_within
+  threshold: 20
+  description: "Hit 10 drivers. One point for every ball that finishes within 20 yards of the centre line. 7+ is fairway-ready."
+  tags: [dispersion, face_control, tee_strategy]
+
+- id: face_control
+  name: "Face Control 10"
+  club_category: any
+  shots: 10
+  metric: face_to_path_deg
+  rule: abs_within
+  threshold: 2.5
+  description: "10 shots with one club. One point for every shot with face-to-path inside ±2.5°. Target 7/10."
+  tags: [face_control, slice, hook, path]
+
+- id: smash_ten
+  name: "Smash Ten"
+  club_category: iron
+  shots: 10
+  metric: smash_factor
+  rule: at_least_expected
+  threshold: -0.02
+  description: "10 shots with one iron. One point for each solid strike (smash factor at or near the expected value for that club). Target 7/10."
+  tags: [strike, low_point]
+
+- id: distance_control
+  name: "Distance Control"
+  club_category: any
+  shots: 10
+  metric: carry_yds
+  rule: within_pct_of_median
+  threshold: 0.05
+  description: "10 shots with one club. One point for every carry within 5% of your median for the set. Target 7/10 with wedges and short irons."
+  tags: [distance_control, wedge_distance, approach]
+
+- id: hit_up_ten
+  name: "Hit Up Ten"
+  club_category: Driver
+  shots: 10
+  metric: attack_angle_deg
+  rule: at_least
+  threshold: 0
+  description: "10 drivers. One point for every shot with a level or upward attack angle (0° or more). Target 7/10."
+  tags: [attack_angle_driver]
+
+- id: down_and_through
+  name: "Down and Through"
+  club_category: iron
+  shots: 10
+  metric: attack_angle_deg
+  rule: at_most
+  threshold: -2
+  description: "10 irons. One point for every shot struck with at least 2° of downward attack. Target 8/10."
+  tags: [attack_angle_iron, low_point]

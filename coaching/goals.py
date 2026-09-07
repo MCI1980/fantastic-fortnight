@@ -1,95 +1,86 @@
 # coaching/goals.py
-# Club-specific goal presets and thresholds for swing analysis
+# Launch-monitor target windows by club category.
+#
+# These are amateur-realistic windows (what a consistent 80s golfer
+# produces), not tour numbers. Signs follow the normalized convention from
+# analysis.prep: positive path = in-to-out, positive face-to-path = fade
+# side, positive attack = hitting up.
 
-DEFAULT_GOALS = {
-    "tempo_lower": 2.5,
-    "tempo_upper": 3.5,
-    "head_sway_max": 3.5,
-    "hip_rot_min": 35,
-    "shoulder_rot_min": 78,
-    "pelvis_slide_max": 5.0,
-    "lead_wrist_set_min": 45,
-    "lead_wrist_set_max": 90,
+from typing import Dict
+
+DEFAULT_GOALS: Dict[str, float] = {
+    "path_min": -3.0,
+    "path_max": 5.0,
+    "ftp_min": -3.0,
+    "ftp_max": 3.0,
+    "ftp_std_max": 4.0,
+    "smash_std_max": 0.06,
+    "carry_cv_max": 0.07,
+    "side_std_max": 18.0,
 }
 
-# Club-specific goals: longer clubs allow more rotation and sway,
-# shorter clubs demand tighter control and compact swings.
-CLUB_GOALS = {
+CATEGORY_GOALS: Dict[str, Dict[str, float]] = {
     "Driver": {
-        "tempo_lower": 2.9,
-        "tempo_upper": 3.6,
-        "head_sway_max": 4.0,
-        "hip_rot_min": 40,
-        "shoulder_rot_min": 85,
-        "pelvis_slide_max": 5.5,
-        "lead_wrist_set_min": 50,
-        "lead_wrist_set_max": 95,
+        "attack_min": -1.0, "attack_max": 5.0,
+        "launch_min": 10.0, "launch_max": 15.0,
+        "spin_min": 1800, "spin_max": 3200,
+        "smash_min": 1.45,
+        "side_std_max": 22.0, "carry_cv_max": 0.07,
     },
-    "3W": {
-        "tempo_lower": 2.8,
-        "tempo_upper": 3.4,
-        "head_sway_max": 3.5,
-        "hip_rot_min": 38,
-        "shoulder_rot_min": 82,
-        "pelvis_slide_max": 5.0,
-        "lead_wrist_set_min": 48,
-        "lead_wrist_set_max": 90,
+    "Wood": {
+        "attack_min": -3.5, "attack_max": 1.5,
+        "launch_min": 9.0, "launch_max": 14.0,
+        "spin_min": 2400, "spin_max": 4300,
+        "smash_min": 1.42,
+        "side_std_max": 20.0, "carry_cv_max": 0.07,
     },
     "Hybrid": {
-        "tempo_lower": 2.7,
-        "tempo_upper": 3.3,
-        "head_sway_max": 3.2,
-        "hip_rot_min": 36,
-        "shoulder_rot_min": 80,
-        "pelvis_slide_max": 4.5,
-        "lead_wrist_set_min": 45,
-        "lead_wrist_set_max": 88,
+        "attack_min": -4.5, "attack_max": 0.5,
+        "launch_min": 11.0, "launch_max": 16.0,
+        "spin_min": 3300, "spin_max": 5300,
+        "smash_min": 1.40,
+        "side_std_max": 18.0, "carry_cv_max": 0.07,
     },
     "Long Iron": {
-        "tempo_lower": 2.7,
-        "tempo_upper": 3.2,
-        "head_sway_max": 3.0,
-        "hip_rot_min": 36,
-        "shoulder_rot_min": 80,
-        "pelvis_slide_max": 4.5,
-        "lead_wrist_set_min": 45,
-        "lead_wrist_set_max": 85,
+        "attack_min": -5.5, "attack_max": -0.5,
+        "launch_min": 12.0, "launch_max": 18.0,
+        "spin_min": 3800, "spin_max": 6000,
+        "smash_min": 1.37, "spin_loft_max": 24.0,
+        "side_std_max": 16.0, "carry_cv_max": 0.07,
     },
     "Mid Iron": {
-        "tempo_lower": 2.6,
-        "tempo_upper": 3.1,
-        "head_sway_max": 2.8,
-        "hip_rot_min": 35,
-        "shoulder_rot_min": 78,
-        "pelvis_slide_max": 4.0,
-        "lead_wrist_set_min": 45,
-        "lead_wrist_set_max": 82,
+        "attack_min": -6.0, "attack_max": -1.0,
+        "launch_min": 15.0, "launch_max": 21.0,
+        "spin_min": 5000, "spin_max": 7800,
+        "smash_min": 1.34, "spin_loft_max": 26.0,
+        "side_std_max": 14.0, "carry_cv_max": 0.06,
     },
     "Short Iron": {
-        "tempo_lower": 2.6,
-        "tempo_upper": 3.0,
-        "head_sway_max": 2.6,
-        "hip_rot_min": 34,
-        "shoulder_rot_min": 76,
-        "pelvis_slide_max": 3.5,
-        "lead_wrist_set_min": 45,
-        "lead_wrist_set_max": 80,
+        "attack_min": -7.0, "attack_max": -1.5,
+        "launch_min": 19.0, "launch_max": 26.0,
+        "spin_min": 6500, "spin_max": 9800,
+        "smash_min": 1.29, "spin_loft_max": 29.0,
+        "side_std_max": 11.0, "carry_cv_max": 0.06,
     },
     "Wedge": {
-        "tempo_lower": 2.5,
-        "tempo_upper": 3.0,
-        "head_sway_max": 2.5,
-        "hip_rot_min": 32,
-        "shoulder_rot_min": 74,
-        "pelvis_slide_max": 3.0,
-        "lead_wrist_set_min": 40,
-        "lead_wrist_set_max": 78,
+        "attack_min": -8.0, "attack_max": -2.0,
+        "launch_min": 24.0, "launch_max": 36.0,
+        "spin_min": 7500, "spin_max": 12000,
+        "smash_min": 1.15,
+        "side_std_max": 8.0, "carry_std_max": 7.0, "carry_cv_max": 0.07,
     },
 }
 
+# Backwards-compatible name used by older code/tests
+CLUB_GOALS = CATEGORY_GOALS
 
-def get_goals_for_club(club: str) -> dict:
-    """Return merged goals for a specific club, falling back to defaults."""
-    goals = DEFAULT_GOALS.copy()
-    goals.update(CLUB_GOALS.get(club, {}))
+
+def get_goals_for_category(category: str) -> Dict[str, float]:
+    goals = dict(DEFAULT_GOALS)
+    goals.update(CATEGORY_GOALS.get(category, {}))
     return goals
+
+
+def get_goals_for_club(club: str) -> Dict[str, float]:
+    from integrations.trackman import club_category
+    return get_goals_for_category(club_category(club))
